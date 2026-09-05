@@ -211,36 +211,16 @@ return read<Record<string, string>>(K.photos, {});
 }
 
 export function setUserPhoto(poseId: string, dataUrl: string): boolean {
-  const all = getUserPhotos();
-  all[poseId] = dataUrl;
-  const ok = write(K.photos, all);
-  
-  // اگر این ژست custom است، image field رو هم update کن
-  const customPoses = getCustomPoses();
-  const poseIndex = customPoses.findIndex((p) => p.id === poseId);
-  if (poseIndex >= 0) {
-    customPoses[poseIndex].image = dataUrl;
-    write(K.custom, customPoses);
-  }
-  
-  return ok;
+const all = getUserPhotos();
+all[poseId] = dataUrl;
+return write(K.photos, all);
 }
-
 
 export function removeUserPhoto(poseId: string): void {
-  const all = getUserPhotos();
-  delete all[poseId];
-  write(K.photos, all);
-  
-  // اگر pose custom است، pose.image رو هم پاک کن
-  const customPoses = getCustomPoses();
-  const poseIndex = customPoses.findIndex((p) => p.id === poseId);
-  if (poseIndex >= 0) {
-    customPoses[poseIndex].image = '';
-    write(K.custom, customPoses);
-  }
+const all = getUserPhotos();
+delete all[poseId];
+write(K.photos, all);
 }
-
 
 /**
  * موقعیت/زوم انتخابی برای عکس‌های متحرک (گیف/وبق) که روی canvas برش
@@ -609,6 +589,12 @@ reviewed: false;
 poses: Pose[];
 userPhotos: Record<string, string>;
 photoManifest: Array<{ code: string; title: string; filename: string }>;
+/**
+ * عکس‌هایی که برای ژست‌های «از قبل موجود» (آماده/وارداتی/ترفیع‌گرفته - نه
+ * ژست تازه‌ی شخصی) عوض شده‌اند. این‌ها فقط باید جایگزین عکس همان ژست در
+ * سورس شوند؛ نباید یک ژست جدید از رویشان ساخته شود.
+ */
+photoUpdates: Array<{ id: string; title: string; filename: string; originalImage?: string }>;
 }
 
 export function buildBackup(): Backup {
@@ -637,8 +623,31 @@ poses.forEach((pose) => {
 const photo = photos[pose.id] || pose.image;
 if (photo) userPhotos[pose.id] = photo;
 });
-  // فقط poses با عکس valid
-  const validPoses = poses.filter((p) => userPhotos[p.id]);
+
+// اگر عکس یک ژستِ «از قبل موجود» (آماده، وارداتی یا ترفیع‌گرفته) عوض شده
+// باشد، آن هم باید در بسته قرار بگیرد؛ وگرنه با تغییر عکس یک ژست آماده،
+// آن عوض‌شدن هیچ‌وقت به نسخه‌ی بعدی برنامه منتقل نمی‌شود چون این ژست جزو
+// getCustomPoses() نیست.
+const customIds = new Set(poses.map((p) => p.id));
+const nonCustomLookup = new Map<string, Pose>();
+[...getPromotedPoses(), ...INITIAL_POSES].forEach((p) => {
+if (!nonCustomLookup.has(p.id)) nonCustomLookup.set(p.id, p);
+});
+const photoUpdates: PosePack['photoUpdates'] = [];
+Object.entries(photos).forEach(([id, dataUrl]) => {
+if (customIds.has(id)) return; // قبلاً همراه ژست شخصی‌اش رفته
+const basePose = nonCustomLookup.get(id);
+if (!basePose) return; // ژستی که دیگر وجود ندارد (مثلاً حذف شده)
+if (basePose.image === dataUrl) return; // عکس تغییری نکرده
+const ext = extensionForDataUrl(dataUrl);
+photoUpdates.push({
+id,
+title: basePose.title,
+filename: `${id}.${ext}`,
+originalImage: basePose.image,
+});
+});
+
 return {
 app: 'pose-director',
 exportType: 'pose-pack',
@@ -649,12 +658,13 @@ poses,
 userPhotos,
 // نام فایل با پسوند واقعی عکس ساخته می‌شود (نه همیشه jpg)، وگرنه گیف با
 // پسوند اشتباه ذخیره می‌شود و در بازبینی سردرگم‌کننده خواهد بود.
-photoManifest: validPoses.map((pose) => {
+photoManifest: poses.map((pose) => {
 const code = pose.transferCode || pose.id;
 const photo = userPhotos[pose.id];
 const ext = photo ? extensionForDataUrl(photo) : 'jpg';
 return { code, title: pose.title, filename: `${code}.${ext}` };
 }),
+photoUpdates,
 };
 }
 
@@ -679,7 +689,7 @@ return null;
  */
 export async function buildPosePackZip(): Promise<{ blob: Blob; count: number } | null> {
 const pack = buildPosePack();
-if (!pack.poses.length) return null;
+if (!pack.poses.length && !pack.photoUpdates.length) return null;
 const JSZip = (await import('jszip')).default;
 const zip = new JSZip();
 const { userPhotos: _omit, ...manifestForJson } = pack;
@@ -696,6 +706,23 @@ if (!bytes) return;
 photosFolder?.file(entry.filename, bytes);
 count += 1;
 });
+
+// عکس‌های تغییرکرده‌ی ژست‌های از قبل موجود (نه ژست تازه)؛ در پوشه‌ای جدا
+// می‌روند تا با import-pose-pack.mjs به‌جای «ژست جدید»، فقط جایگزین عکس
+// همان ژست موجود شوند.
+if (pack.photoUpdates.length) {
+const updatesFolder = zip.folder('photos-updated');
+const allPhotos = getUserPhotos();
+pack.photoUpdates.forEach((entry) => {
+const photo = allPhotos[entry.id];
+if (!photo) return;
+const bytes = dataUrlToBytes(photo);
+if (!bytes) return;
+updatesFolder?.file(entry.filename, bytes);
+count += 1;
+});
+}
+
 const blob = await zip.generateAsync({ type: 'blob' });
 return { blob, count };
 }

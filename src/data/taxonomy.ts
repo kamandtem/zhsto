@@ -42,7 +42,8 @@ export interface ScenarioInfo {
 
 /** ترتیب این آرایه = ترتیب واقعی روز تصویربرداری. هسته اصلی کتابخانه. */
 export const SCENARIOS: ScenarioInfo[] = [
-  { key: 'جزئیات و اکسسوری', en: 'Details & Accessories', hint: 'دکور، حلقه، دسته‌گل، لباس، کفش و اکسسوری؛ گرم کردن دست و دوربین.', indoorByDefault: true },
+  { key: 'دیتیل صحنه', en: 'Scene Detail', hint: 'دکور، چیدمان، شمع و کارت دعوت؛ بدون حضور عروس و داماد.', indoorByDefault: true },
+  { key: 'اکسسوری', en: 'Accessories', hint: 'حلقه، دسته‌گل، لباس، کفش و اکسسوری عروس و داماد.', indoorByDefault: true },
   { key: 'آماده شدن عروس', en: 'Bride Getting Ready', hint: 'آرایش، لباس پوشیدن، آینه و لحظه‌های خصوصی قبل از خروج.', indoorByDefault: true },
   { key: 'آماده شدن داماد', en: 'Groom Getting Ready', hint: 'کراوات، ساعت، دکمه سرآستین و آماده شدن داماد.', indoorByDefault: true },
   { key: 'نگاه اول و بهم رسیدن', en: 'First Look / Meeting', hint: 'اولین دیدار روز؛ بالاترین بار احساسی کل پروژه.' },
@@ -63,8 +64,19 @@ export function getScenario(key: ScenarioCategory): ScenarioInfo {
   return SCENARIOS.find((s) => s.key === key) || SCENARIOS[0];
 }
 
-/** زیرموضوع‌های «جزئیات و اکسسوری» — فقط برای همان سناریو معنا دارد. */
-export const DETAIL_SUBJECTS: DetailSubject[] = ['دکور', 'حلقه', 'دسته‌گل', 'لباس', 'کفش', 'اکسسوری'];
+/** زیرموضوع‌های «دیتیل صحنه» — چیدمان و دکور، بدون سوژه. */
+export const SCENE_DETAIL_SUBJECTS: DetailSubject[] = ['دکور'];
+/** زیرموضوع‌های «اکسسوری» — وسایل همراه یا پوشیدنی عروس و داماد. */
+export const ACCESSORY_SUBJECTS: DetailSubject[] = ['حلقه', 'دسته‌گل', 'لباس', 'کفش', 'اکسسوری'];
+/** مجموع هر دو زیردسته — برای جاهایی که هنوز به فهرست کامل نیاز دارند. */
+export const DETAIL_SUBJECTS: DetailSubject[] = [...SCENE_DETAIL_SUBJECTS, ...ACCESSORY_SUBJECTS];
+
+/** زیردسته‌های قابل انتخاب برای یک سناریوی مشخص («دیتیل صحنه» یا «اکسسوری») */
+export function detailSubjectsFor(scenario: ScenarioCategory): DetailSubject[] {
+  if (scenario === 'دیتیل صحنه') return SCENE_DETAIL_SUBJECTS;
+  if (scenario === 'اکسسوری') return ACCESSORY_SUBJECTS;
+  return [];
+}
 
 /* ------------------------------ ۲. Attributes ------------------------------ */
 
@@ -198,7 +210,10 @@ export function deriveScope(p: Pose): ScopeResult {
 
 /* ---------------------- ۴. تشخیص سناریوی هر ژست ---------------------- */
 
-const DETAIL_ARTS: ArtKey[] = ['ringFocus', 'handsDetail', 'bouquetLow', 'flatlay', 'dressHem', 'shoeDetail'];
+/** دیتیل صحنه: چیدمان و دکور بدون سوژه (مثلاً فلت‌لی روی میز) */
+const SCENE_DETAIL_ARTS: ArtKey[] = ['flatlay'];
+/** اکسسوری: وسایل همراه یا پوشیدنی عروس و داماد */
+const ACCESSORY_ARTS: ArtKey[] = ['ringFocus', 'handsDetail', 'bouquetLow', 'dressHem', 'shoeDetail'];
 const MOVEMENT_ARTS: ArtKey[] = [
   'walk', 'walkAway', 'walkSideBySide', 'runTogether', 'jump', 'splash', 'dance',
   'spinTogether', 'dip', 'lift', 'carry', 'twirl', 'veilFly', 'dressFly',
@@ -228,7 +243,7 @@ function has(list: ArtKey[], art: ArtKey): boolean {
 
 /** نگاشت زیردسته قدیمی باغ عمارت → سناریوی جدید (سازگاری با داده موجود) */
 const GSC_TO_SCENARIO: Record<string, ScenarioCategory> = {
-  'جزئیات و دکور': 'جزئیات و اکسسوری',
+  'جزئیات و دکور': 'دیتیل صحنه',
   'آماده شدن عروس': 'آماده شدن عروس',
   'آماده شدن داماد': 'آماده شدن داماد',
   'بهم رسیدن زوج': 'نگاه اول و بهم رسیدن',
@@ -255,7 +270,8 @@ export function deriveScenario(p: Pose): ScenarioCategory {
   if (CEREMONY_RE.test(text)) return 'مراسم و ورود';
   if (gsc === 'نگاه اول و بهم رسیدن' || FIRST_LOOK_RE.test(text)) return 'نگاه اول و بهم رسیدن';
   if (gsc === 'شب و بدرقه' || has(NIGHT_ARTS, p.art) || NIGHT_RE.test(text)) return 'شب و بدرقه';
-  if (gsc === 'جزئیات و اکسسوری' || has(DETAIL_ARTS, p.art)) return 'جزئیات و اکسسوری';
+  if (gsc === 'دیتیل صحنه' || has(SCENE_DETAIL_ARTS, p.art)) return 'دیتیل صحنه';
+  if (has(ACCESSORY_ARTS, p.art)) return 'اکسسوری';
 
   // ۲) فرم صحنه
   if (has(GROUP_ARTS, p.art) || p.category === 'گروهی' || p.peopleCount > 2) return 'خانواده و گروهی';
@@ -292,7 +308,7 @@ const CLOSE_RE = /کلوز|نزدیک|دیتیل|جزئیات|ماکرو/;
 const WIDE_RE = /واید|باز|فول|تمام قد|وسعت|بی‌کران|محیطی/;
 
 export function deriveFraming(p: Pose): Framing {
-  if (has(DETAIL_ARTS, p.art)) return 'کلوز';
+  if (has(SCENE_DETAIL_ARTS, p.art) || has(ACCESSORY_ARTS, p.art)) return 'کلوز';
   if (p.art === 'twoDots' || p.art === 'silhouette' || p.art === 'starSky') return 'واید';
   const frame = normalizeText(p.cameraTips ? p.cameraTips.framing : '');
   if (CLOSE_RE.test(frame)) return 'کلوز';
@@ -383,7 +399,7 @@ export function enrichPose(p: Pose): Pose {
       ? p.suitableLocations
       : deriveSuitableLocations(enriched, scope);
 
-  if (scenario === 'جزئیات و اکسسوری') {
+  if (scenario === 'دیتیل صحنه' || scenario === 'اکسسوری') {
     enriched.detailSubject = p.detailSubject || deriveDetailSubject(p);
   }
 

@@ -14,6 +14,9 @@
  *     به‌صورت pose-NNN.webp بازنویسی می‌کند و برای فایل‌های وارداتی مناسب نیست).
  *  ۴. اگر src/data/poses.ts هنوز IMPORTED_POSES را import/merge نکرده باشد،
  *     این کار را (فقط یک‌بار) خودش انجام می‌دهد.
+ *  ۵. اگر بسته شامل «photos-updated» باشد (یعنی کاربر عکس یک ژستِ از قبل
+ *     موجود را عوض کرده، نه یک ژست تازه)، همان فایل عکسِ ژست موجود را در
+ *     public/ با عکس تازه جایگزین می‌کند — بدون ساختن ژست جدید.
  *
  * اجرا:
  *   node scripts/import-pose-pack.mjs <مسیر فایل zip>
@@ -156,47 +159,114 @@ for (const pose of pack.poses) {
   });
 }
 
-if (newPoseEntries.length === 0) {
-  console.log('هیچ ژست جدیدی برای وارد کردن نبود (همه از قبل وارد شده بودند یا zip خالی بود).');
+if (newPoseEntries.length > 0) {
+  const entriesTs = newPoseEntries
+    .map((p) => `  ${JSON.stringify(p, null, 2).split('\n').join('\n  ')} satisfies Pose,`)
+    .join('\n');
+
+  const updatedSource = existingSource.replace(
+    /export const IMPORTED_POSES: Pose\[\] = \[\n([\s\S]*?)\n\];\n?$/,
+    (full, body) => {
+      const trimmedBody = body.trim();
+      const joined = trimmedBody ? `${trimmedBody}\n${entriesTs}` : entriesTs;
+      return `export const IMPORTED_POSES: Pose[] = [\n${joined}\n];\n`;
+    }
+  );
+
+  writeFileSync(IMPORTED_POSES_FILE, updatedSource, 'utf8');
+
+  // اگر poses.ts هنوز IMPORTED_POSES را merge نکرده، این کار را یک‌بار انجام بده.
+  let posesSource = readFileSync(POSES_FILE, 'utf8');
+  if (!posesSource.includes("from './importedPoses'")) {
+    posesSource = posesSource.replace(
+      "import { REFERENCE_POSES } from './referencePoses';",
+      "import { REFERENCE_POSES } from './referencePoses';\nimport { IMPORTED_POSES } from './importedPoses';"
+    );
+    posesSource = posesSource.replace(
+      'export const INITIAL_POSES: Pose[] = keepCoreAndDistinct(ALL_BUILTIN_POSES);',
+      '/** ژست‌های وارداتی (بسته ژست شخصی) به‌همان‌شکل خودشان اضافه می‌شوند؛ از\n' +
+      ' * assignCanonicalPhotos رد نمی‌شوند تا مسیر عکس (و گیف‌های متحرک) دست‌نخورده بماند. */\n' +
+      'export const INITIAL_POSES: Pose[] = [...keepCoreAndDistinct(ALL_BUILTIN_POSES), ...IMPORTED_POSES];'
+    );
+    writeFileSync(POSES_FILE, posesSource, 'utf8');
+    console.log('[import-pose-pack] src/data/poses.ts برای merge کردن IMPORTED_POSES به‌روزرسانی شد.');
+  }
+}
+
+/*
+ * --- بخش «به‌روزرسانی عکس ژست‌های از قبل موجود» ---
+ * این‌ها ژست تازه نیستند؛ کاربر فقط عکس یک ژست آماده/وارداتی را از داخل
+ * برنامه عوض کرده. کاری که باید بکنیم فقط جایگزین‌کردن فایل عکس همان ژست
+ * در public/ است؛ هیچ فایل sourceای دستکاری نمی‌شود.
+ */
+const photoUpdates = Array.isArray(pack.photoUpdates) ? pack.photoUpdates : [];
+let updatedPhotoCount = 0;
+const manualPhotoNotes = [];
+
+for (const update of photoUpdates) {
+  const zipPhoto = zip.file(`photos-updated/${update.filename}`);
+  if (!zipPhoto) {
+    manualPhotoNotes.push(`${update.id} (${update.title}) — فایل عکس در zip پیدا نشد.`);
+    continue;
+  }
+  if (!update.originalImage || !update.originalImage.startsWith('/')) {
+    manualPhotoNotes.push(`${update.id} (${update.title}) — مسیر عکس فعلی مشخص نیست؛ دستی جایگزین کن.`);
+    continue;
+  }
+  const targetPath = resolve(ROOT, 'public' + update.originalImage);
+  if (!existsSync(targetPath)) {
+    manualPhotoNotes.push(`${update.id} (${update.title}) — فایل «${update.originalImage}» پیدا نشد؛ دستی جایگزین کن.`);
+    continue;
+  }
+
+  const newBytes = await zipPhoto.async('nodebuffer');
+  const newExt = extOf(update.filename);
+  const targetExt = extOf(targetPath);
+  const newAnimated = isAnimatedExt(newExt);
+  const targetAnimated = isAnimatedExt(targetExt);
+
+  if (newAnimated !== targetAnimated) {
+    // نوع عکس (ثابت/متحرک) با فایل فعلی فرق دارد؛ چون اسم/پسوند فایل باید
+    // عوض شود و ارجاعش هم در سورس دستی اصلاح شود، خودکار جایگزین نمی‌کنیم.
+    manualPhotoNotes.push(
+      `${update.id} (${update.title}) — نوع عکس تازه (${newExt}) با فایل فعلی (${targetExt}) فرق دارد؛ دستی جایگزین کن: ${update.originalImage}`
+    );
+    continue;
+  }
+
+  if (targetExt === newExt || !sharp) {
+    writeFileSync(targetPath, newBytes);
+  } else {
+    try {
+      let converted;
+      if (targetExt === 'webp') converted = await sharp(newBytes).webp({ quality: 82 }).toBuffer();
+      else if (targetExt === 'jpg' || targetExt === 'jpeg') converted = await sharp(newBytes).jpeg({ quality: 88 }).toBuffer();
+      else if (targetExt === 'png') converted = await sharp(newBytes).png().toBuffer();
+      else converted = newBytes;
+      writeFileSync(targetPath, converted);
+    } catch (err) {
+      console.warn(`[import-pose-pack] تبدیل عکس ${update.id} ناموفق بود، بدون تبدیل جایگزین شد:`, err.message);
+      writeFileSync(targetPath, newBytes);
+    }
+  }
+  updatedPhotoCount += 1;
+}
+
+if (newPoseEntries.length === 0 && photoUpdates.length === 0) {
+  console.log('هیچ ژست جدید یا عکس تغییرکرده‌ای برای وارد کردن نبود (همه از قبل وارد شده بودند یا zip خالی بود).');
   console.log(skipped.length ? `رد شده:\n- ${skipped.join('\n- ')}` : '');
   process.exit(0);
 }
 
-const entriesTs = newPoseEntries
-  .map((p) => `  ${JSON.stringify(p, null, 2).split('\n').join('\n  ')} satisfies Pose,`)
-  .join('\n');
-
-const updatedSource = existingSource.replace(
-  /export const IMPORTED_POSES: Pose\[\] = \[\n([\s\S]*?)\n\];\n?$/,
-  (full, body) => {
-    const trimmedBody = body.trim();
-    const joined = trimmedBody ? `${trimmedBody}\n${entriesTs}` : entriesTs;
-    return `export const IMPORTED_POSES: Pose[] = [\n${joined}\n];\n`;
-  }
-);
-
-writeFileSync(IMPORTED_POSES_FILE, updatedSource, 'utf8');
-
-// اگر poses.ts هنوز IMPORTED_POSES را merge نکرده، این کار را یک‌بار انجام بده.
-let posesSource = readFileSync(POSES_FILE, 'utf8');
-if (!posesSource.includes("from './importedPoses'")) {
-  posesSource = posesSource.replace(
-    "import { REFERENCE_POSES } from './referencePoses';",
-    "import { REFERENCE_POSES } from './referencePoses';\nimport { IMPORTED_POSES } from './importedPoses';"
-  );
-  posesSource = posesSource.replace(
-    'export const INITIAL_POSES: Pose[] = keepCoreAndDistinct(ALL_BUILTIN_POSES);',
-    '/** ژست‌های وارداتی (بسته ژست شخصی) به‌همان‌شکل خودشان اضافه می‌شوند؛ از\n' +
-    ' * assignCanonicalPhotos رد نمی‌شوند تا مسیر عکس (و گیف‌های متحرک) دست‌نخورده بماند. */\n' +
-    'export const INITIAL_POSES: Pose[] = [...keepCoreAndDistinct(ALL_BUILTIN_POSES), ...IMPORTED_POSES];'
-  );
-  writeFileSync(POSES_FILE, posesSource, 'utf8');
-  console.log('[import-pose-pack] src/data/poses.ts برای merge کردن IMPORTED_POSES به‌روزرسانی شد.');
-}
-
-console.log(`✅ ${newPoseEntries.length} ژست وارد شد (${photoCount} عکس کپی شد).`);
+console.log(`✅ ${newPoseEntries.length} ژست جدید وارد شد (${photoCount} عکس کپی شد).`);
 if (skipped.length) console.log(`رد شده (تکراری):\n- ${skipped.join('\n- ')}`);
+if (photoUpdates.length) {
+  console.log(`✅ ${updatedPhotoCount} عکسِ ژستِ از قبل موجود به‌روزرسانی شد.`);
+}
+if (manualPhotoNotes.length) {
+  console.log(`⚠️ این عکس‌ها را باید دستی جایگزین کنی:\n- ${manualPhotoNotes.join('\n- ')}`);
+}
 console.log('حالا این‌ها را انجام بده:');
-console.log('  1. نتیجه‌ی src/data/importedPoses.ts را مرور کن.');
+if (newPoseEntries.length) console.log('  1. نتیجه‌ی src/data/importedPoses.ts را مرور کن.');
 console.log('  2. npm run typecheck را اجرا کن.');
 console.log('  3. اگر همه‌چیز درست بود، تغییرات را commit کن.');

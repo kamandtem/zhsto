@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Camera, Trash2, Plus, Save, ImagePlus, Loader2, ZoomIn, ZoomOut, Check, Move, RotateCcw } from 'lucide-react';
+import { X, Camera, Trash2, Plus, Save, ImagePlus, Loader2, ZoomIn, ZoomOut, Check, Move, RotateCcw, RectangleVertical, RectangleHorizontal } from 'lucide-react';
 import {
   ArtKey,
   CategoryType,
@@ -157,6 +157,7 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
 
   const [busy, setBusy] = useState(false);
   const [image, setImage] = useState<string | undefined>();
+  const [imageRatio, setImageRatio] = useState<'4/3' | '3/4'>('4/3');
   const [isAnimatedImage, setIsAnimatedImage] = useState(false);
   const [cropSource, setCropSource] = useState<string | undefined>();
   const [title, setTitle] = useState('');
@@ -183,6 +184,7 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
     if (!open) return;
     if (editing) {
       setImage(editing.image);
+      setImageRatio(editing.imageRatio || '4/3');
       setIsAnimatedImage(!!editing.isAnimated);
       setTitle(editing.title);
       setCategory(editing.category);
@@ -204,6 +206,7 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
       setLens(editing.cameraTips.lensSuggestion || '');
     } else {
       setImage(undefined);
+      setImageRatio('4/3');
       setIsAnimatedImage(false);
       setTitle('');
       setCategory('عروس و داماد');
@@ -318,6 +321,7 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
       art,
       ...progressionMeta(difficulty, art, peopleCount),
       image,
+      imageRatio,
       isAnimated: isAnimatedImage || undefined,
       tags: Array.from(new Set([...tags, poseType, ...locations, 'ژست من'])),
       steps: cleanSteps,
@@ -370,6 +374,7 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
     art: previewArt,
     ...progressionMeta(difficulty, previewArt, peopleCount),
     image,
+    imageRatio,
     isAnimated: isAnimatedImage,
     tags: [],
     steps: [],
@@ -395,9 +400,11 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
       {cropSource && (
         <PhotoCropper
           source={cropSource}
+          initialRatio={imageRatio}
           onCancel={() => setCropSource(undefined)}
-          onConfirm={(cropped) => {
+          onConfirm={(cropped, ratio) => {
             setImage(cropped);
+            setImageRatio(ratio);
             setCropSource(undefined);
             onSaved('عکس تنظیم شد. حالا می‌توانی ذخیره کنی.', true);
           }}
@@ -431,7 +438,12 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
           {/* عکس ژست */}
           <div>
             <span className="label">عکس ژست (از گالری یا دوربین)</span>
-            <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-line">
+            <div
+              className={
+                (imageRatio === '3/4' ? 'mx-auto w-[min(70%,260px)] aspect-[3/4]' : 'w-full aspect-[4/3]') +
+                ' relative rounded-2xl overflow-hidden border border-line'
+              }
+            >
               <PoseVisual pose={preview} contain={!!image} />
               {busy && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50">
@@ -668,23 +680,32 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
 };
 
 
+type PhotoRatio = '4/3' | '3/4';
+
 interface PhotoCropperProps {
   source: string;
+  initialRatio: PhotoRatio;
   onCancel: () => void;
-  onConfirm: (dataUrl: string) => void;
+  onConfirm: (dataUrl: string, ratio: PhotoRatio) => void;
   onError?: (message: string) => void;
 }
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
-const OUT_W = 1100;
-const OUT_H = 825;
+const OUT_LONG_SIDE = 1100;
+/** ابعاد خروجی نهایی canvas بر اساس نسبت انتخابی */
+const outSize = (ratio: PhotoRatio) =>
+  ratio === '3/4'
+    ? { w: Math.round((OUT_LONG_SIDE * 3) / 4), h: OUT_LONG_SIDE }
+    : { w: OUT_LONG_SIDE, h: Math.round((OUT_LONG_SIDE * 3) / 4) };
 
 /**
  * ویرایشگر آفلاین عکس با تعامل مستقیم: عکس را با انگشت/ماوس در کادر جابه‌جا کن
  * (درگ) و با دو انگشت یا چرخ ماوس زوم کن؛ بدون اهرم یا اسلایدر جداگانه.
+ * کادر می‌تواند افقی ۴:۳ یا عمودی ۳:۴ باشد؛ انتخاب همین‌جا انجام می‌شود.
  */
-const PhotoCropper: React.FC<PhotoCropperProps> = ({ source, onCancel, onConfirm, onError }) => {
+const PhotoCropper: React.FC<PhotoCropperProps> = ({ source, initialRatio, onCancel, onConfirm, onError }) => {
+  const [ratio, setRatio] = useState<PhotoRatio>(initialRatio);
   const [zoom, setZoom] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 }); // px offset within frame
   const [busy, setBusy] = useState(false);
@@ -743,8 +764,8 @@ const PhotoCropper: React.FC<PhotoCropperProps> = ({ source, onCancel, onConfirm
   const onTouchMove = (e: React.TouchEvent) => {
     if (e.touches.length === 2 && pinchState.current) {
       e.preventDefault();
-      const ratio = dist(e.touches) / pinchState.current.startDist;
-      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinchState.current.startZoom * ratio));
+      const pinchRatio = dist(e.touches) / pinchState.current.startDist;
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinchState.current.startZoom * pinchRatio));
       setZoom(next);
     }
   };
@@ -766,10 +787,18 @@ const PhotoCropper: React.FC<PhotoCropperProps> = ({ source, onCancel, onConfirm
 
   const reset = () => { setZoom(1); setPos({ x: 0, y: 0 }); };
 
+  const switchRatio = (next: PhotoRatio) => {
+    if (next === ratio) return;
+    setRatio(next);
+    setZoom(1);
+    setPos({ x: 0, y: 0 });
+  };
+
   const confirm = () => {
     if (!naturalSize) return;
     setBusy(true);
     try {
+      const { w: OUT_W, h: OUT_H } = outSize(ratio);
       const canvas = document.createElement('canvas');
       canvas.width = OUT_W;
       canvas.height = OUT_H;
@@ -787,7 +816,7 @@ const PhotoCropper: React.FC<PhotoCropperProps> = ({ source, onCancel, onConfirm
           ctx.fillStyle = '#120f1c';
           ctx.fillRect(0, 0, OUT_W, OUT_H);
           ctx.drawImage(img, dx, dy, drawW, drawH);
-          onConfirm(canvas.toDataURL('image/jpeg', 0.82));
+          onConfirm(canvas.toDataURL('image/jpeg', 0.82), ratio);
         } catch {
           onError?.('عکس ذخیره نشد، دوباره تلاش کن.');
         } finally {
@@ -818,9 +847,39 @@ const PhotoCropper: React.FC<PhotoCropperProps> = ({ source, onCancel, onConfirm
           <button onClick={onCancel} className="p-2 text-muted" aria-label="لغو"><X className="w-5 h-5" /></button>
         </header>
         <div className="p-4 space-y-3.5">
+          <div className="flex items-center gap-2 p-1 rounded-xl" style={{ background: 'var(--color-surface2)' }}>
+            <button
+              type="button"
+              onClick={() => switchRatio('3/4')}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11.5px] font-bold"
+              style={{
+                background: ratio === '3/4' ? 'var(--color-surface)' : 'transparent',
+                color: ratio === '3/4' ? 'var(--color-gold)' : 'var(--color-muted)',
+              }}
+            >
+              <RectangleVertical className="w-3.5 h-3.5" />
+              عمودی ۳:۴
+            </button>
+            <button
+              type="button"
+              onClick={() => switchRatio('4/3')}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11.5px] font-bold"
+              style={{
+                background: ratio === '4/3' ? 'var(--color-surface)' : 'transparent',
+                color: ratio === '4/3' ? 'var(--color-gold)' : 'var(--color-muted)',
+              }}
+            >
+              <RectangleHorizontal className="w-3.5 h-3.5" />
+              افقی ۴:۳
+            </button>
+          </div>
+
           <div
             ref={frameRef}
-            className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-gold bg-[#120f1c] touch-none cursor-move"
+            className={
+              (ratio === '3/4' ? 'aspect-[3/4] max-w-[240px] mx-auto' : 'aspect-[4/3] w-full') +
+              ' relative rounded-2xl overflow-hidden border border-gold bg-[#120f1c] touch-none cursor-move'
+            }
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={endDrag}
@@ -849,7 +908,9 @@ const PhotoCropper: React.FC<PhotoCropperProps> = ({ source, onCancel, onConfirm
               </div>
             )}
             <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 0 2px color-mix(in srgb, var(--color-gold) 80%, transparent)' }} />
-            <span className="absolute top-2 right-2 pill !text-[9px] pointer-events-none">کادر نهایی ۴:۳</span>
+            <span className="absolute top-2 right-2 pill !text-[9px] pointer-events-none">
+              {ratio === '3/4' ? 'کادر نهایی ۳:۴' : 'کادر نهایی ۴:۳'}
+            </span>
           </div>
 
           <div className="flex items-center justify-center gap-2">

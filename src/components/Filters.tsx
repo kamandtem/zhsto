@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Search, X, SlidersHorizontal, RotateCcw, Compass, MapPin } from 'lucide-react';
 import {
   CategoryType,
-  DetailSubject,
   DifficultyLevel,
   EMPTY_FILTERS,
   EnvironmentType,
@@ -17,7 +16,7 @@ import {
 } from '../types/pose';
 import { LOCATION_KEYS } from '../data/locations';
 import {
-  DETAIL_SUBJECTS,
+  detailSubjectsFor,
   ENVIRONMENTS,
   FRAMINGS,
   MOODS,
@@ -36,7 +35,6 @@ const FRAMING_OPTS: (Framing | 'همه')[] = ['همه', ...FRAMINGS];
 const MOOD_OPTS: (Mood | 'همه')[] = ['همه', ...MOODS];
 const ENV_OPTS: (EnvironmentType | 'همه')[] = ['همه', ...ENVIRONMENTS];
 const MOVE_OPTS: MovementFilter[] = ['همه', 'دارد', 'ندارد'];
-const DETAIL_OPTS: (DetailSubject | 'همه')[] = ['همه', ...DETAIL_SUBJECTS];
 
 interface Props {
   filters: FilterState;
@@ -140,14 +138,19 @@ export const Filters: React.FC<Props> = ({ filters, onChange, total, allPoses })
             onChange({
               ...filters,
               scenario: v,
-              detailSubject: v === 'جزئیات و اکسسوری' ? filters.detailSubject : 'همه',
+              detailSubject: v === 'دیتیل صحنه' || v === 'اکسسوری' ? filters.detailSubject : 'همه',
             })
           }
         />
       </div>
 
-      {filters.scenario === 'جزئیات و اکسسوری' && (
-        <Row label="موضوع جزئیات" options={DETAIL_OPTS} value={filters.detailSubject} onPick={(v) => onChange({ ...filters, detailSubject: v })} />
+      {(filters.scenario === 'دیتیل صحنه' || filters.scenario === 'اکسسوری') && (
+        <Row
+          label={filters.scenario === 'دیتیل صحنه' ? 'موضوع دیتیل صحنه' : 'موضوع اکسسوری'}
+          options={['همه', ...detailSubjectsFor(filters.scenario)]}
+          value={filters.detailSubject}
+          onPick={(v) => onChange({ ...filters, detailSubject: v })}
+        />
       )}
 
       {/* ۲) عمومی یا اختصاصی */}

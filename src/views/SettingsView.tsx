@@ -64,7 +64,7 @@ export const SettingsView: React.FC<Props> = ({
     try {
       const result = await buildPosePackZip();
       if (!result) {
-        onToast('هنوز ژست شخصی برای انتقال نداری.', false);
+        onToast('هنوز چیزی برای انتقال نداری (نه ژست شخصی، نه عکس تغییرکرده).', false);
         return;
       }
       const url = URL.createObjectURL(result.blob);
@@ -156,7 +156,7 @@ export const SettingsView: React.FC<Props> = ({
           {packing ? 'در حال آماده‌سازی...' : 'آماده‌سازی بسته ژست برای انتقال'}
         </button>
         <p className="text-[10.5px] leading-relaxed text-muted">
-          این گزینه یک فایل zip می‌سازد که هم عکس‌های ژست‌های شخصی‌ات (هرکدام با نام خودش) و هم اطلاعات متنی آن‌ها را کنار هم دارد.
+          این گزینه یک فایل zip می‌سازد که عکس‌های ژست‌های شخصی‌ات و اطلاعات متنی آن‌ها، و همچنین عکس هر ژست آماده‌ای که خودت عوضش کرده‌ای، را کنار هم دارد.
           همین یک فایل را برای سازنده برنامه بفرست.
         </p>
         <input
