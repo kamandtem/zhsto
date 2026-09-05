@@ -216,7 +216,6 @@ export function setUserPhoto(poseId: string, dataUrl: string): boolean {
   const ok = write(K.photos, all);
   
   // اگر این ژست custom است، image field رو هم update کن
-  // تا در بسته انتقال شامل شود
   const customPoses = getCustomPoses();
   const poseIndex = customPoses.findIndex((p) => p.id === poseId);
   if (poseIndex >= 0) {
@@ -227,12 +226,13 @@ export function setUserPhoto(poseId: string, dataUrl: string): boolean {
   return ok;
 }
 
+
 export function removeUserPhoto(poseId: string): void {
   const all = getUserPhotos();
   delete all[poseId];
   write(K.photos, all);
   
-  // اگر pose custom است و عکس custom حذف شد، pose.image رو هم حذف کن
+  // اگر pose custom است، pose.image رو هم پاک کن
   const customPoses = getCustomPoses();
   const poseIndex = customPoses.findIndex((p) => p.id === poseId);
   if (poseIndex >= 0) {
@@ -241,11 +241,6 @@ export function removeUserPhoto(poseId: string): void {
   }
 }
 
-export function removeUserPhoto(poseId: string): void {
-const all = getUserPhotos();
-delete all[poseId];
-write(K.photos, all);
-}
 
 /**
  * موقعیت/زوم انتخابی برای عکس‌های متحرک (گیف/وبق) که روی canvas برش
@@ -642,15 +637,15 @@ poses.forEach((pose) => {
 const photo = photos[pose.id] || pose.image;
 if (photo) userPhotos[pose.id] = photo;
 });
-// فقط poses با عکس valid شامل شوند
-const validPoses = poses.filter((p) => userPhotos[p.id]);
+  // فقط poses با عکس valid
+  const validPoses = poses.filter((p) => userPhotos[p.id]);
 return {
 app: 'pose-director',
 exportType: 'pose-pack',
 version: 1,
 exportedAt: new Date().toISOString(),
 reviewed: false,
-poses: validPoses,
+poses,
 userPhotos,
 // نام فایل با پسوند واقعی عکس ساخته می‌شود (نه همیشه jpg)، وگرنه گیف با
 // پسوند اشتباه ذخیره می‌شود و در بازبینی سردرگم‌کننده خواهد بود.
