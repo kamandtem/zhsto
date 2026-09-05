@@ -14,6 +14,7 @@ import {
   MapPin,
   Clapperboard,
   Plus,
+  Pencil,
 } from 'lucide-react';
 import { Pose } from '../types/pose';
 import { PoseVisual } from '../components/PoseVisual';
@@ -35,6 +36,7 @@ interface Props {
   onNextPose: () => void;
   onDataChanged: () => void;
   onDelete: (pose: Pose) => void;
+  onEdit: (pose: Pose) => void;
   onAddToProject: (pose: Pose) => void;
   onToast: (text: string, ok?: boolean) => void;
   bigScript: boolean;
@@ -48,6 +50,7 @@ export const PoseDetailView: React.FC<Props> = ({
   onNextPose,
   onDataChanged,
   onDelete,
+  onEdit,
   onAddToProject,
   onToast,
   bigScript,
@@ -163,6 +166,15 @@ export const PoseDetailView: React.FC<Props> = ({
             aria-label="نشان کردن"
           >
             <Heart className="w-5 h-5" style={{ color: '#fff' }} fill={isFavorite ? '#fff' : 'none'} />
+          </button>
+
+          <button
+            onClick={() => onEdit(pose)}
+            className="absolute top-14 left-3 p-2 rounded-full"
+            style={{ background: 'rgba(8,6,14,.55)', backdropFilter: 'blur(6px)' }}
+            aria-label="ویرایش ژست"
+          >
+            <Pencil className="w-5 h-5" style={{ color: 'var(--color-gold)' }} />
           </button>
 
           <div className="absolute bottom-3 right-4 left-4">
@@ -333,7 +345,7 @@ export const PoseDetailView: React.FC<Props> = ({
           </span>
         ))}
       </div>
-      <FilmPlan pose={pose} open={filmOpen} onClose={() => setFilmOpen(false)} />
+      <FilmPlan pose={pose} open={filmOpen} onClose={() => setFilmOpen(false)} onSaved={onDataChanged} />
       {cropSrc && (
         <PhotoCropModal
           imageSrc={cropSrc}

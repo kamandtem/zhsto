@@ -281,7 +281,24 @@ export interface Pose {
   createdAt?: number;
   note?: string;
   suggestedMinutes?: number;
+
+  /* -------------- فیلم‌برداری این ژست (صفحه «فیلم‌برداری این ژست») -------------- */
+  /** حرکت دوربین هنگام فیلم‌برداری این ژست */
+  cameraMovement?: string;
+  /** حرکت سوژه هنگام فیلم‌برداری این ژست */
+  subjectMovement?: string;
+  /** ابزار حرکتی دوربین برای فیلم‌برداری این ژست */
+  movementTool?: MovementTool;
 }
+
+/** ابزار حرکتی دوربین برای فیلم‌برداری یک ژست */
+export type MovementTool = 'gimbal' | 'handheld' | 'heli';
+
+export const MOVEMENT_TOOL_OPTIONS: { key: MovementTool; label: string }[] = [
+  { key: 'gimbal', label: 'گیمبال' },
+  { key: 'handheld', label: 'دوربین روی دست' },
+  { key: 'heli', label: 'هلی‌شات' },
+];
 
 export interface MyLocation {
   id: string;

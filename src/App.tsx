@@ -624,6 +624,7 @@ export default function App() {
             onNextPose={() => nextPose(false)}
             onDataChanged={reload}
             onDelete={removePose}
+            onEdit={editPose}
             onAddToProject={addToProject}
             onToast={toast}
             bigScript={prefs.bigScript}
@@ -714,6 +715,7 @@ export default function App() {
         onToggleFavorite={handleFavorite}
         bigScript={prefs.bigScript}
         queuePosition={shootQueue.length ? { index: shootIndex, total: shootQueue.length } : undefined}
+        onDataChanged={reload}
       />
     </div>
   );

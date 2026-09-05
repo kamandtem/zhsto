@@ -14,7 +14,7 @@ import {
 } from '../types/pose';
 import { LOCATION_KEYS } from '../data/locations';
 import { FRAMINGS, MOODS, SCENARIO_KEYS, SCOPES, enrichPose } from '../data/taxonomy';
-import { getCustomPoses, nextTransferCode, saveCustomPose } from '../services/storage';
+import { getCustomPoses, nextTransferCode, saveCustomPose, savePoseEdit } from '../services/storage';
 import { artForText, progressionMeta } from '../data/poses';
 import { MAX_ANIMATED_KB, approxDataUrlKb, isAnimatedFile } from '../services/media';
 import { PoseVisual } from './PoseVisual';
@@ -179,6 +179,15 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
   const [tagText, setTagText] = useState('');
   const [note, setNote] = useState('');
   const [lens, setLens] = useState('');
+  const [bodyPosition, setBodyPosition] = useState('');
+  const [handPosition, setHandPosition] = useState('');
+  const [footPosition, setFootPosition] = useState('');
+  const [headDirection, setHeadDirection] = useState('');
+  const [eyeDirection, setEyeDirection] = useState('');
+  const [camFraming, setCamFraming] = useState('');
+  const [camAngle, setCamAngle] = useState('');
+  const [camDistance, setCamDistance] = useState('');
+  const [lightTip, setLightTip] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -204,6 +213,15 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
       setTagText(editing.tags.filter((t) => t !== editing.poseType).join('، '));
       setNote(editing.note || '');
       setLens(editing.cameraTips.lensSuggestion || '');
+      setBodyPosition(editing.bodyPosition || '');
+      setHandPosition(editing.handPosition || '');
+      setFootPosition(editing.footPosition || '');
+      setHeadDirection(editing.headDirection || '');
+      setEyeDirection(editing.eyeDirection || '');
+      setCamFraming(editing.cameraTips.framing || '');
+      setCamAngle(editing.cameraTips.cameraAngle || '');
+      setCamDistance(editing.cameraTips.suggestedDistance || '');
+      setLightTip(editing.cameraTips.lightTip || '');
     } else {
       setImage(undefined);
       setImageRatio('4/3');
@@ -226,6 +244,15 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
       setTagText('');
       setNote('');
       setLens('');
+      setBodyPosition('');
+      setHandPosition('');
+      setFootPosition('');
+      setHeadDirection('');
+      setEyeDirection('');
+      setCamFraming('');
+      setCamAngle('');
+      setCamDistance('');
+      setLightTip('');
     }
   }, [open, editing]);
 
@@ -298,9 +325,15 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
       ART_BY_TYPE[poseType]
     );
 
+    // ویرایش یک ژست «از قبل موجود» (آماده/وارداتی/ترفیع‌گرفته) با ژست شخصی
+    // تازه فرق دارد: باید همان id و کد انتقال حفظ شود و به‌جای ساخته‌شدن یک
+    // ژست جدید، به‌صورت Overlay (savePoseEdit) ذخیره شود؛ وگرنه هم نسخه اصلی و
+    // هم نسخه ویرایش‌شده با هم در فهرست ظاهر می‌شوند.
+    const isEditingExisting = !!editing && !editing.isCustom;
+
     const pose: Pose = {
       id: editing?.id || `mine-${Date.now()}`,
-      transferCode: editing?.transferCode || nextTransferCode(getCustomPoses()),
+      transferCode: isEditingExisting ? editing?.transferCode : (editing?.transferCode || nextTransferCode(getCustomPoses())),
       title: title.trim(),
       category,
       poseType,
@@ -323,30 +356,33 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
       image,
       imageRatio,
       isAnimated: isAnimatedImage || undefined,
-      tags: Array.from(new Set([...tags, poseType, ...locations, 'ژست من'])),
+      tags: Array.from(
+        new Set([...tags, poseType, ...locations, ...(isEditingExisting ? [] : ['ژست من'])])
+      ),
       steps: cleanSteps,
-      bodyPosition: note.trim() || 'فرم بدن را طبق مراحل اجرا تنظیم کنید.',
-      handPosition: 'انگشتان کشیده و آزاد، بدون انقباض.',
-      footPosition: 'وزن روی پای عقب، پای جلو کمی سبک.',
-      headDirection: 'چانه کمی جلو تا خط فک تمیز دیده شود.',
-      eyeDirection: 'نگاه در ثانیه آخر روی نقطه هدف بنشیند.',
+      bodyPosition: bodyPosition.trim() || 'فرم بدن را طبق مراحل اجرا تنظیم کنید.',
+      handPosition: handPosition.trim() || 'انگشتان کشیده و آزاد، بدون انقباض.',
+      footPosition: footPosition.trim() || 'وزن روی پای عقب، پای جلو کمی سبک.',
+      headDirection: headDirection.trim() || 'چانه کمی جلو تا خط فک تمیز دیده شود.',
+      eyeDirection: eyeDirection.trim() || 'نگاه در ثانیه آخر روی نقطه هدف بنشیند.',
       photographerScript: cleanScript.length ? cleanScript : ['آرام در همین حالت بمانید.'],
       commonMistakes: mistakes.map((m) => m.trim()).filter(Boolean),
       variations: cleanVariations,
       cameraTips: {
-        framing: 'مدیوم شات',
-        cameraAngle: 'هم‌سطح چشم سوژه',
-        suggestedDistance: '۲ تا ۳ متر',
+        framing: camFraming.trim() || 'مدیوم شات',
+        cameraAngle: camAngle.trim() || 'هم‌سطح چشم سوژه',
+        suggestedDistance: camDistance.trim() || '۲ تا ۳ متر',
         lensSuggestion: lens.trim() || '85mm f/1.8',
-        lightTip: 'نور اصلی با زاویه ۴۵ درجه از یک سمت.',
+        lightTip: lightTip.trim() || 'نور اصلی با زاویه ۴۵ درجه از یک سمت.',
       },
-      isCustom: true,
+      isCustom: !isEditingExisting,
       createdAt: editing?.createdAt || Date.now(),
       note: note.trim() || undefined,
     };
 
     // metadata خالی‌مانده (مثل فضا و لوکیشن‌های سازگار) محاسبه می‌شود.
-    const res = saveCustomPose(enrichPose(pose));
+    const enriched = enrichPose(pose);
+    const res = isEditingExisting ? savePoseEdit(enriched) : saveCustomPose(enriched);
     if (res.ok) {
       onSaved(editing ? 'ژست به‌روزرسانی شد.' : 'ژست شما ذخیره شد و در جستجو پیدا می‌شود.', true);
       onClose();
@@ -637,7 +673,7 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
 
           <div className="grid grid-cols-1 gap-3">
             <div>
-              <span className="label">یادداشت / نکته فرم بدن</span>
+              <span className="label">یادداشت شخصی</span>
               <textarea
                 value={note}
                 rows={2}
@@ -654,11 +690,107 @@ export const AddPoseSheet: React.FC<Props> = ({ open, onClose, onSaved, editing 
                 onChange={setLens as any}
               />
             </div>
+          </div>
+
+          <div
+            className="p-3 rounded-2xl border border-line space-y-3"
+            style={{ background: 'color-mix(in srgb, var(--color-ink) 3%, transparent)' }}
+          >
+            <span className="label !mb-0">فرم بدن و جزئیات (بخش «فرم بدن» صفحه ژست)</span>
             <div>
-              <span className="label">تنظیمات اضافی</span>
-              <input
-                placeholder="f/1.8، ISO، شاتر، ..."
-                className="field"
+              <span className="text-[10px] font-extrabold text-faint">بدن</span>
+              <textarea
+                value={bodyPosition}
+                rows={2}
+                onChange={(e) => setBodyPosition(e.target.value)}
+                placeholder="فرم بدن را طبق مراحل اجرا تنظیم کنید."
+                className="field resize-none"
+              />
+            </div>
+            <div>
+              <span className="text-[10px] font-extrabold text-faint">دست‌ها</span>
+              <textarea
+                value={handPosition}
+                rows={2}
+                onChange={(e) => setHandPosition(e.target.value)}
+                placeholder="انگشتان کشیده و آزاد، بدون انقباض."
+                className="field resize-none"
+              />
+            </div>
+            <div>
+              <span className="text-[10px] font-extrabold text-faint">پاها</span>
+              <textarea
+                value={footPosition}
+                rows={2}
+                onChange={(e) => setFootPosition(e.target.value)}
+                placeholder="وزن روی پای عقب، پای جلو کمی سبک."
+                className="field resize-none"
+              />
+            </div>
+            <div>
+              <span className="text-[10px] font-extrabold text-faint">سر</span>
+              <textarea
+                value={headDirection}
+                rows={2}
+                onChange={(e) => setHeadDirection(e.target.value)}
+                placeholder="چانه کمی جلو تا خط فک تمیز دیده شود."
+                className="field resize-none"
+              />
+            </div>
+            <div>
+              <span className="text-[10px] font-extrabold text-faint">نگاه</span>
+              <textarea
+                value={eyeDirection}
+                rows={2}
+                onChange={(e) => setEyeDirection(e.target.value)}
+                placeholder="نگاه در ثانیه آخر روی نقطه هدف بنشیند."
+                className="field resize-none"
+              />
+            </div>
+          </div>
+
+          <div
+            className="p-3 rounded-2xl border border-line space-y-3"
+            style={{ background: 'color-mix(in srgb, var(--color-ink) 3%, transparent)' }}
+          >
+            <span className="label !mb-0">تنظیمات دوربین</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <span className="text-[10px] font-extrabold text-faint">کادربندی</span>
+                <input
+                  value={camFraming}
+                  onChange={(e) => setCamFraming(e.target.value)}
+                  placeholder="مدیوم شات"
+                  className="field"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] font-extrabold text-faint">زاویه</span>
+                <input
+                  value={camAngle}
+                  onChange={(e) => setCamAngle(e.target.value)}
+                  placeholder="هم‌سطح چشم سوژه"
+                  className="field"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] font-extrabold text-faint">فاصله</span>
+                <input
+                  value={camDistance}
+                  onChange={(e) => setCamDistance(e.target.value)}
+                  placeholder="۲ تا ۳ متر"
+                  className="field"
+                />
+              </div>
+            </div>
+            <div>
+              <span className="text-[10px] font-extrabold text-faint">نور</span>
+              <textarea
+                value={lightTip}
+                rows={2}
+                onChange={(e) => setLightTip(e.target.value)}
+                placeholder="نور اصلی با زاویه ۴۵ درجه از یک سمت."
+                className="field resize-none"
               />
             </div>
           </div>

@@ -15,6 +15,7 @@ seen: 'pd_onboarded_v2',
 session: 'pd_session_v2',
 promoted: 'pd_promoted_poses_v1',
 deletedBuiltin: 'pd_deleted_builtin_v1',
+poseEdits: 'pd_pose_edits_v1',
 projects: 'pd_projects_v1',
 filmNotes: 'pd_film_notes_v1',
 myLocations: 'pd_my_locations_v1',
@@ -287,6 +288,37 @@ const remaining = getCustomPoses().filter((p) => p.id !== id);
 return write(K.promoted, promoted) && write(K.custom, remaining);
 }
 
+/**
+ * ویرایش‌های ذخیره‌شده روی ژست‌های «از قبل موجود» (آماده/وارداتی/ترفیع‌گرفته).
+ * برخلاف ژست‌های شخصی که کل رکوردشان در pd_custom_poses ذخیره می‌شود، این‌ها
+ * فقط یک Overlay روی رکورد اصلی هستند تا در getAllPoses() جایگزین آن شوند —
+ * بدون این‌که رکورد اصلی و ویرایش‌شده هر دو با هم (Duplicate) نمایش داده شوند.
+ */
+export function getPoseEdits(): Record<string, Pose> {
+return read<Record<string, Pose>>(K.poseEdits, {});
+}
+
+/** ذخیره ویرایش کامل یک ژست «از قبل موجود» (نه ژست شخصی تازه) */
+export function savePoseEdit(pose: Pose): { ok: boolean; error?: string } {
+const edits = getPoseEdits();
+edits[pose.id] = pose;
+const ok = write(K.poseEdits, edits);
+return ok
+? { ok: true }
+: {
+ok: false,
+error:
+'حافظه دستگاه پر شده است. چند ژست قدیمی یا عکس‌های مرجع را حذف کنید و دوباره تلاش کنید.',
+};
+}
+
+function clearPoseEdit(id: string): void {
+const edits = getPoseEdits();
+if (!(id in edits)) return;
+delete edits[id];
+write(K.poseEdits, edits);
+}
+
 /** حذف هر نوع ژست، چه اصلی و چه شخصی */
 export function deletePoseEverywhere(pose: Pose): void {
 if (pose.isCustom) {
@@ -297,6 +329,7 @@ write(K.promoted, getPromotedPoses().filter((p) => p.id !== pose.id));
 if (INITIAL_POSES.some((p) => p.id === pose.id)) {
 write(K.deletedBuiltin, Array.from(new Set([...getDeletedBuiltinIds(), pose.id])));
 }
+clearPoseEdit(pose.id);
 setFavoriteIds(getFavoriteIds().filter((x) => x !== pose.id));
 const notes = getNotes();
 delete notes[pose.id];
@@ -338,16 +371,20 @@ export function getAllPoses(): Pose[] {
 const photos = getUserPhotos();
 const crops = getPhotoCrops();
 const notes = getNotes();
+const edits = getPoseEdits();
 // enrichPose تضمین می‌کند حتی ژست‌های ذخیره‌شده‌ی قدیمی (که metadata تاکسونومی
 // جدید را ندارند) هنگام خواندن، سناریو و ویژگی‌هایشان محاسبه شود.
 const merge = (p: Pose): Pose => {
-const photo = photos[p.id];
+// اگر کاربر این ژست را از داخل برنامه ویرایش کرده، نسخه ویرایش‌شده جایگزین
+// رکورد اصلی می‌شود (همان id، بدون Duplicate شدن در فهرست).
+const base = edits[p.id] ? { ...p, ...edits[p.id] } : p;
+const photo = photos[base.id];
 return enrichPose({
-...p,
-image: photo || p.image,
-note: notes[p.id],
-isAnimated: photo ? isAnimatedDataUrl(photo) : p.isAnimated,
-photoCrop: photo ? crops[p.id] : undefined,
+...base,
+image: photo || base.image,
+note: notes[base.id],
+isAnimated: photo ? isAnimatedDataUrl(photo) : base.isAnimated,
+photoCrop: photo ? crops[base.id] : undefined,
 });
 };
 const deleted = new Set(getDeletedBuiltinIds());
@@ -582,7 +619,7 @@ myLocations?: MyLocation[];
 export interface PosePack {
 app: 'pose-director';
 exportType: 'pose-pack';
-version: 1;
+version: 2;
 exportedAt: string;
 /** false تا وقتی کلود این بسته را داخل سورس کد اضافه کند؛ برای ردیابی بسته‌های پشت‌سرهم. */
 reviewed: false;
@@ -595,6 +632,18 @@ photoManifest: Array<{ code: string; title: string; filename: string }>;
  * سورس شوند؛ نباید یک ژست جدید از رویشان ساخته شود.
  */
 photoUpdates: Array<{ id: string; title: string; filename: string; originalImage?: string }>;
+/**
+ * ژست‌های «از قبل موجود» که کاربر از داخل برنامه ویرایش کرده (عنوان،
+ * مراحل، دیالوگ، دوربین و ...). باید در سورس، رکورد همان id جایگزین شود؛
+ * نه این‌که یک ژست تازه ساخته شود.
+ */
+poseEdits: Pose[];
+/**
+ * شناسه ژست‌هایی که کاربر از داخل برنامه حذف کرده (آماده/وارداتی/ترفیع‌گرفته).
+ * باید در نسخه بعدی برنامه هم پنهان بمانند، حتی برای نصب‌های تازه — یعنی
+ * باید از سورس هم حذف/exclude شوند، نه فقط در حافظه همین دستگاه.
+ */
+deletedBuiltinIds: string[];
 }
 
 export function buildBackup(): Backup {
@@ -651,7 +700,7 @@ originalImage: basePose.image,
 return {
 app: 'pose-director',
 exportType: 'pose-pack',
-version: 1,
+version: 2,
 exportedAt: new Date().toISOString(),
 reviewed: false,
 poses,
@@ -665,6 +714,8 @@ const ext = photo ? extensionForDataUrl(photo) : 'jpg';
 return { code, title: pose.title, filename: `${code}.${ext}` };
 }),
 photoUpdates,
+poseEdits: Object.values(getPoseEdits()),
+deletedBuiltinIds: getDeletedBuiltinIds(),
 };
 }
 
@@ -689,7 +740,14 @@ return null;
  */
 export async function buildPosePackZip(): Promise<{ blob: Blob; count: number } | null> {
 const pack = buildPosePack();
-if (!pack.poses.length && !pack.photoUpdates.length) return null;
+if (
+!pack.poses.length &&
+!pack.photoUpdates.length &&
+!pack.poseEdits.length &&
+!pack.deletedBuiltinIds.length
+) {
+return null;
+}
 const JSZip = (await import('jszip')).default;
 const zip = new JSZip();
 const { userPhotos: _omit, ...manifestForJson } = pack;

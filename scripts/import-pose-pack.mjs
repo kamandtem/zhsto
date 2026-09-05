@@ -40,6 +40,7 @@ const ROOT = resolve(process.cwd());
 const PHOTOS_DIR = resolve(ROOT, 'public/generated/photos');
 const IMPORTED_POSES_FILE = resolve(ROOT, 'src/data/importedPoses.ts');
 const POSES_FILE = resolve(ROOT, 'src/data/poses.ts');
+const OVERRIDES_FILE = resolve(ROOT, 'src/data/poseOverrides.ts');
 
 mkdirSync(PHOTOS_DIR, { recursive: true });
 
@@ -252,8 +253,100 @@ for (const update of photoUpdates) {
   updatedPhotoCount += 1;
 }
 
-if (newPoseEntries.length === 0 && photoUpdates.length === 0) {
-  console.log('هیچ ژست جدید یا عکس تغییرکرده‌ای برای وارد کردن نبود (همه از قبل وارد شده بودند یا zip خالی بود).');
+/*
+ * --- بخش «ویرایش و حذف ژست‌های از قبل موجود» ---
+ * این‌ها هم ژست تازه نیستند: کاربر از داخل برنامه یا اطلاعات یک ژست آماده را
+ * عوض کرده (poseEdits) یا آن را کلاً حذف کرده (deletedBuiltinIds). به‌جای
+ * دست‌کاری خطرناک فایل‌های حجیم و نیمه‌خودکار ژست‌ها (poses.ts/referencePoses.ts)،
+ * این تغییرات در یک فایل جدا (src/data/poseOverrides.ts) به‌صورت Overlay
+ * روی id همان ژست اعمال می‌شوند؛ دقیقاً همان مکانیزمی که خود اپ برای پیش‌نمایش
+ * محلی این تغییرات (قبل از ارسال بسته) استفاده می‌کند.
+ */
+const poseEdits = Array.isArray(pack.poseEdits) ? pack.poseEdits : [];
+const deletedBuiltinIds = Array.isArray(pack.deletedBuiltinIds) ? pack.deletedBuiltinIds : [];
+
+let overridesSource = '';
+let removedIds = [];
+let overridesMap = {};
+if (existsSync(OVERRIDES_FILE)) {
+  overridesSource = readFileSync(OVERRIDES_FILE, 'utf8');
+  const removedMatch = /export const REMOVED_POSE_IDS: string\[\] = (\[[\s\S]*?\]);/.exec(overridesSource);
+  const overridesMatch = /export const POSE_OVERRIDES: Record<string, Pose> = (\{[\s\S]*?\n\});/.exec(overridesSource);
+  try {
+    if (removedMatch) removedIds = JSON.parse(removedMatch[1]);
+  } catch {
+    console.warn('[import-pose-pack] REMOVED_POSE_IDS موجود خوانده نشد؛ از خالی شروع می‌شود.');
+  }
+  try {
+    if (overridesMatch) overridesMap = JSON.parse(overridesMatch[1]);
+  } catch {
+    console.warn('[import-pose-pack] POSE_OVERRIDES موجود خوانده نشد؛ از خالی شروع می‌شود.');
+  }
+}
+
+for (const pose of poseEdits) {
+  overridesMap[pose.id] = pose;
+}
+for (const id of deletedBuiltinIds) {
+  if (!removedIds.includes(id)) removedIds.push(id);
+  // اگر ژستی هم ویرایش شده و هم بعداً حذف شده، حذف باید برنده باشد.
+  delete overridesMap[id];
+}
+
+if (poseEdits.length || deletedBuiltinIds.length) {
+  const header = `import { Pose } from '../types/pose';
+
+/**
+ * این فایل را دستی ویرایش نکن — با «npm run import-pose-pack» ساخته/به‌روزرسانی می‌شود.
+ * ویرایش یا حذفی که کاربر از داخل برنامه روی ژست‌های آماده/وارداتی/ترفیع‌گرفته
+ * انجام داده، اینجا به‌صورت Overlay روی id همان ژست اعمال می‌شود — بدون این‌که
+ * فایل‌های اصلی ژست‌ها (poses.ts / referencePoses.ts) دست‌کاری شوند.
+ */
+
+/** شناسه ژست‌هایی که کاربر از برنامه حذف کرده؛ دیگر نباید در هیچ نسخه‌ای نمایش داده شوند. */
+`;
+  const removedTs = `export const REMOVED_POSE_IDS: string[] = ${JSON.stringify(removedIds, null, 2)};\n`;
+  const overridesTs =
+    `\n/** نسخه‌ی ویرایش‌شده‌ی کامل ژست‌های آماده/وارداتی که کاربر تغییر داده. */\n` +
+    `export const POSE_OVERRIDES: Record<string, Pose> = ${JSON.stringify(overridesMap, null, 2)};\n`;
+  writeFileSync(OVERRIDES_FILE, header + removedTs + overridesTs, 'utf8');
+  console.log(
+    `[import-pose-pack] src/data/poseOverrides.ts به‌روزرسانی شد (${removedIds.length} حذف‌شده، ${Object.keys(overridesMap).length} ویرایش‌شده).`
+  );
+
+  // اگر poses.ts هنوز این Overlay را روی INITIAL_POSES اعمال نکرده، این کار را یک‌بار انجام بده.
+  let posesSource = readFileSync(POSES_FILE, 'utf8');
+  if (!posesSource.includes("from './poseOverrides'")) {
+    posesSource = posesSource.replace(
+      "import { IMPORTED_POSES } from './importedPoses';",
+      "import { IMPORTED_POSES } from './importedPoses';\nimport { REMOVED_POSE_IDS, POSE_OVERRIDES } from './poseOverrides';"
+    );
+    const initialPosesPattern = /export const INITIAL_POSES: Pose\[\] = enrichPoses\(\[\n\s*\.\.\.keepCoreAndDistinct\(ALL_BUILTIN_POSES\),\n\s*\.\.\.IMPORTED_POSES,\n\]\);/;
+    if (initialPosesPattern.test(posesSource)) {
+      posesSource = posesSource.replace(
+        initialPosesPattern,
+        `export const INITIAL_POSES: Pose[] = enrichPoses([\n  ...keepCoreAndDistinct(ALL_BUILTIN_POSES),\n  ...IMPORTED_POSES,\n])\n  .filter((p) => !REMOVED_POSE_IDS.includes(p.id))\n  .map((p) => (POSE_OVERRIDES[p.id] ? { ...p, ...POSE_OVERRIDES[p.id] } : p));`
+      );
+      writeFileSync(POSES_FILE, posesSource, 'utf8');
+      console.log('[import-pose-pack] src/data/poses.ts برای اعمال REMOVED_POSE_IDS/POSE_OVERRIDES به‌روزرسانی شد.');
+    } else {
+      console.log(
+        '⚠️ الگوی INITIAL_POSES در src/data/poses.ts پیدا نشد؛ import اضافه شد ولی باید دستی' +
+          ' فیلتر/override را روی تعریف INITIAL_POSES اعمال کنی:\n' +
+          '   .filter((p) => !REMOVED_POSE_IDS.includes(p.id)).map((p) => POSE_OVERRIDES[p.id] ? { ...p, ...POSE_OVERRIDES[p.id] } : p)'
+      );
+      writeFileSync(POSES_FILE, posesSource, 'utf8');
+    }
+  }
+}
+
+if (
+  newPoseEntries.length === 0 &&
+  photoUpdates.length === 0 &&
+  poseEdits.length === 0 &&
+  deletedBuiltinIds.length === 0
+) {
+  console.log('هیچ ژست جدید، عکس تغییرکرده، ویرایش یا حذفی برای وارد کردن نبود (همه از قبل اعمال شده بودند یا zip خالی بود).');
   console.log(skipped.length ? `رد شده:\n- ${skipped.join('\n- ')}` : '');
   process.exit(0);
 }
@@ -263,10 +356,17 @@ if (skipped.length) console.log(`رد شده (تکراری):\n- ${skipped.join('
 if (photoUpdates.length) {
   console.log(`✅ ${updatedPhotoCount} عکسِ ژستِ از قبل موجود به‌روزرسانی شد.`);
 }
+if (poseEdits.length) {
+  console.log(`✅ ${poseEdits.length} ژستِ از قبل موجود با اطلاعات ویرایش‌شده به‌روزرسانی شد.`);
+}
+if (deletedBuiltinIds.length) {
+  console.log(`✅ ${deletedBuiltinIds.length} ژست حذف‌شده برای همیشه از نسخه بعدی هم حذف شد.`);
+}
 if (manualPhotoNotes.length) {
   console.log(`⚠️ این عکس‌ها را باید دستی جایگزین کنی:\n- ${manualPhotoNotes.join('\n- ')}`);
 }
 console.log('حالا این‌ها را انجام بده:');
 if (newPoseEntries.length) console.log('  1. نتیجه‌ی src/data/importedPoses.ts را مرور کن.');
-console.log('  2. npm run typecheck را اجرا کن.');
-console.log('  3. اگر همه‌چیز درست بود، تغییرات را commit کن.');
+if (poseEdits.length || deletedBuiltinIds.length) console.log('  2. نتیجه‌ی src/data/poseOverrides.ts را مرور کن.');
+console.log('  3. npm run typecheck را اجرا کن.');
+console.log('  4. اگر همه‌چیز درست بود، تغییرات را commit کن.');

@@ -64,7 +64,7 @@ export const SettingsView: React.FC<Props> = ({
     try {
       const result = await buildPosePackZip();
       if (!result) {
-        onToast('هنوز چیزی برای انتقال نداری (نه ژست شخصی، نه عکس تغییرکرده).', false);
+        onToast('هنوز چیزی برای انتقال نداری (نه ژست شخصی، نه عکس یا ژست تغییرکرده، نه ژست حذف‌شده‌ای).', false);
         return;
       }
       const url = URL.createObjectURL(result.blob);
