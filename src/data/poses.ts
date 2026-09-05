@@ -1,7 +1,7 @@
 import { REFERENCE_POSES } from './referencePoses';
 import { FEATURE_SEEDS } from './featureSeeds';
 import { IMPORTED_POSES } from './importedPoses';
-import { enrichPose } from './taxonomy';
+import { enrichPoses } from './taxonomy';
 import {
   ArtKey,
   CategoryType,
@@ -1629,11 +1629,11 @@ const ALL_BUILTIN_POSES: Pose[] = assignCanonicalPhotos(sortForProgression(dedup
  * وارداتی را از بین می‌برد.
  */
 /**
- * enrichPose تاکسونومی جدید (سناریو، عمومی/اختصاصی، لوکیشن‌های سازگار، حال‌وهوا،
+ * enrichPoses تاکسونومی جدید (سناریو، عمومی/اختصاصی، لوکیشن‌های سازگار، حال‌وهوا،
  * کادر و حرکت) را روی همان رکورد و همان ID می‌نشاند. هیچ ژستی Duplicate نمی‌شود؛
  * حضور در چند Context محاسبه‌ای است.
  */
-export const INITIAL_POSES: Pose[] = enrichPose([
+export const INITIAL_POSES: Pose[] = enrichPoses([
   ...keepCoreAndDistinct(ALL_BUILTIN_POSES),
   ...IMPORTED_POSES,
 ]);

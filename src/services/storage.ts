@@ -211,9 +211,34 @@ return read<Record<string, string>>(K.photos, {});
 }
 
 export function setUserPhoto(poseId: string, dataUrl: string): boolean {
-const all = getUserPhotos();
-all[poseId] = dataUrl;
-return write(K.photos, all);
+  const all = getUserPhotos();
+  all[poseId] = dataUrl;
+  const ok = write(K.photos, all);
+  
+  // اگر این ژست custom است، image field رو هم update کن
+  // تا در بسته انتقال شامل شود
+  const customPoses = getCustomPoses();
+  const poseIndex = customPoses.findIndex((p) => p.id === poseId);
+  if (poseIndex >= 0) {
+    customPoses[poseIndex].image = dataUrl;
+    write(K.custom, customPoses);
+  }
+  
+  return ok;
+}
+
+export function removeUserPhoto(poseId: string): void {
+  const all = getUserPhotos();
+  delete all[poseId];
+  write(K.photos, all);
+  
+  // اگر pose custom است و عکس custom حذف شد، pose.image رو هم حذف کن
+  const customPoses = getCustomPoses();
+  const poseIndex = customPoses.findIndex((p) => p.id === poseId);
+  if (poseIndex >= 0) {
+    customPoses[poseIndex].image = '';
+    write(K.custom, customPoses);
+  }
 }
 
 export function removeUserPhoto(poseId: string): void {
@@ -617,17 +642,19 @@ poses.forEach((pose) => {
 const photo = photos[pose.id] || pose.image;
 if (photo) userPhotos[pose.id] = photo;
 });
+// فقط poses با عکس valid شامل شوند
+const validPoses = poses.filter((p) => userPhotos[p.id]);
 return {
 app: 'pose-director',
 exportType: 'pose-pack',
 version: 1,
 exportedAt: new Date().toISOString(),
 reviewed: false,
-poses,
+poses: validPoses,
 userPhotos,
 // نام فایل با پسوند واقعی عکس ساخته می‌شود (نه همیشه jpg)، وگرنه گیف با
 // پسوند اشتباه ذخیره می‌شود و در بازبینی سردرگم‌کننده خواهد بود.
-photoManifest: poses.map((pose) => {
+photoManifest: validPoses.map((pose) => {
 const code = pose.transferCode || pose.id;
 const photo = userPhotos[pose.id];
 const ext = photo ? extensionForDataUrl(photo) : 'jpg';
