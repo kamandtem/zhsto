@@ -1,443 +1,191 @@
-import {
-  ArtKey,
-  DetailSubject,
-  EnvironmentType,
-  Framing,
-  LocationType,
-  Mood,
-  Pose,
-  PoseScope,
-  ScenarioCategory,
-} from '../types/pose';
-import { LOCATION_KEYS } from './locations';
+// Pre-Wedding Photography Taxonomy & Pose Enrichment Engine
 
-/* ==========================================================================
- * معماری محتوایی نسل دوم
- * --------------------------------------------------------------------------
- * پیش از این، محور اصلی برنامه «لوکیشن» بود: باغ عمارت / شمال / جنوب / کویر.
- * این مدل غلط بود، چون بیشتر ژست‌ها هیچ وابستگی واقعی به یک محیط ندارند و
- * فقط به این دلیل به یک لوکیشن چسبیده بودند که عکس نمونه‌شان آن‌جا گرفته شده.
- *
- * محور جدید «سناریوی تصویربرداری» است: توالی واقعی کار در یک Pre-Wedding /
- * فرمالیتی، از جزئیات و آماده شدن تا شب و بدرقه. لوکیشن از «دسته» به
- * «Context» تبدیل می‌شود و فقط دو نقش دارد:
- *   ۱) فیلتر سازگاری  → این ژست عمومی این‌جا اجرا می‌شود یا نه؟
- *   ۲) ژست اختصاصی    → ژستی که بدون ویژگی فیزیکی آن محیط بی‌معنا است.
- *
- * هر ژست یک ID یکتا دارد و هرگز Duplicate نمی‌شود؛ حضورش در چند Context
- * از طریق metadata محاسبه می‌شود، نه با کپی کردن رکورد.
- * ========================================================================== */
+export const SCENARIOS = [
+  'جزئیات صحنه',      // 1. Scene details (preparations, location specifics)
+  'اکسسوری',           // 2. Accessories & decor focus
+  'آماده شدن',         // 3. Getting ready (makeup, dressing)
+  'نگاه اول',          // 4. First look moment
+  'پرتره',             // 5. Portrait (single subject)
+  'تعامل زوج',         // 6. Couple interaction
+  'حرکت و دویدن',      // 7. Movement & walking
+  'گروهی خانواده',     // 8. Family group shots
+  'دوستان و شاهدین',   // 9. Friends & witnesses
+  'مراسم و رسومات',    // 10. Ceremony & traditions
+  'شب و رقص',          // 11. Evening & dancing
+  'شام و مهمان‌ها',    // 12. Dinner & guests
+  'تفریحی و عفویی'      // 13. Candid & playful moments
+] as const;
 
-/* ------------------------- ۱. سناریوی تصویربرداری ------------------------- */
+export const LOCATIONS = [
+  'باغ و عمارت',
+  'شمال',
+  'جنوب',
+  'کویر',
+  'ساحل',
+  'شهر'
+] as const;
 
-export interface ScenarioInfo {
-  key: ScenarioCategory;
-  /** معادل انگلیسی، برای هم‌زبانی با بریف محصول */
-  en: string;
-  /** توضیح یک‌خطی: این مرحله چه کاری در روز تصویربرداری انجام می‌دهد */
-  hint: string;
-  /** آیا این مرحله معمولاً داخل فضای بسته است */
-  indoorByDefault?: boolean;
-}
+export const SCOPES = ['عمومی', 'اختصاصی لوکیشن'] as const;
+export const MOODS = ['رومانتیک', 'شادی', 'نزدیکی', 'عظیم', 'عفویی', 'درام'] as const;
+export const FRAMINGS = ['کلوز‌آپ', 'نیم‌تنه', 'تمام‌بدن', 'شات وسیع', 'جزئیات'] as const;
+export const MOVEMENTS = ['ایستا', 'سبک', 'فعال', 'رو‌به‌دوام'] as const;
+export const ENVIRONMENTS = ['درون‌خانه', 'بیرون', 'طبیعت', 'شهری', 'مختلط'] as const;
+export const IMAGE_ORIENTATIONS = ['landscape', 'portrait'] as const;
 
-/** ترتیب این آرایه = ترتیب واقعی روز تصویربرداری. هسته اصلی کتابخانه. */
-export const SCENARIOS: ScenarioInfo[] = [
-  { key: 'جزئیات و اکسسوری', en: 'Details & Accessories', hint: 'دکور، حلقه، دسته‌گل، لباس، کفش و اکسسوری؛ گرم کردن دست و دوربین.', indoorByDefault: true },
-  { key: 'آماده شدن عروس', en: 'Bride Getting Ready', hint: 'آرایش، لباس پوشیدن، آینه و لحظه‌های خصوصی قبل از خروج.', indoorByDefault: true },
-  { key: 'آماده شدن داماد', en: 'Groom Getting Ready', hint: 'کراوات، ساعت، دکمه سرآستین و آماده شدن داماد.', indoorByDefault: true },
-  { key: 'نگاه اول و بهم رسیدن', en: 'First Look / Meeting', hint: 'اولین دیدار روز؛ بالاترین بار احساسی کل پروژه.' },
-  { key: 'پرتره عروس', en: 'Bride Portraits', hint: 'پرتره تک‌نفره عروس در سه کادر کلوز، مدیوم و واید.' },
-  { key: 'پرتره داماد', en: 'Groom Portraits', hint: 'پرتره تک‌نفره داماد در سه کادر کلوز، مدیوم و واید.' },
-  { key: 'پرتره زوج', en: 'Couple Portraits', hint: 'قاب‌های ایستا و تمیز دونفره؛ ستون فقرات آلبوم.' },
-  { key: 'تعامل زوج', en: 'Couple Interaction', hint: 'آغوش، بوسه، نجوا، لمس؛ صمیمیت واقعی نه ژست خشک.' },
-  { key: 'قدم زدن و حرکت', en: 'Walking & Movement', hint: 'هر چیزی که سوژه در آن حرکت می‌کند؛ بهترین ابزار طبیعی شدن.' },
-  { key: 'شادی، احساس و رقص', en: 'Fun / Emotion / Dance', hint: 'خنده، چرخش، رقص، پرش و انرژی بالا.' },
-  { key: 'خانواده و گروهی', en: 'Family & Group', hint: 'خانواده، ساقدوش‌ها و قاب‌های چندنفره.' },
-  { key: 'مراسم و ورود', en: 'Ceremony / Entrance', hint: 'ورود، عقد، سفره، کیک و لحظه‌های آیینی.' },
-  { key: 'شب و بدرقه', en: 'Night / Farewell', hint: 'نور مصنوعی، آسمان شب، سیلوئت و پایان مراسم.' },
-];
-
-export const SCENARIO_KEYS: ScenarioCategory[] = SCENARIOS.map((s) => s.key);
-
-export function getScenario(key: ScenarioCategory): ScenarioInfo {
-  return SCENARIOS.find((s) => s.key === key) || SCENARIOS[0];
-}
-
-/** زیرموضوع‌های «جزئیات و اکسسوری» — فقط برای همان سناریو معنا دارد. */
-export const DETAIL_SUBJECTS: DetailSubject[] = ['دکور', 'حلقه', 'دسته‌گل', 'لباس', 'کفش', 'اکسسوری'];
-
-/* ------------------------------ ۲. Attributes ------------------------------ */
-
-export const SCOPES: PoseScope[] = ['عمومی', 'اختصاصی لوکیشن'];
-export const FRAMINGS: Framing[] = ['کلوز', 'مدیوم', 'واید'];
-export const MOODS: Mood[] = ['رمانتیک', 'شاد', 'آرام', 'دراماتیک', 'رسمی'];
-export const ENVIRONMENTS: EnvironmentType[] = ['فضای باز', 'فضای بسته', 'هر دو'];
-
-/* ------------------- ۳. تشخیص وابستگی واقعی به لوکیشن ------------------- */
-
-/**
- * کلیدواژه‌های «سخت»: اگر ژست به این‌ها اشاره کند، بدون آن محیط عملاً
- * قابل اجرا نیست. فقط این‌ها ژست را به یک لوکیشن قفل می‌کنند.
- */
-/**
- * نکته مهم فارسی: توکن‌های کوتاه مثل «مه» داخل کلمات دیگر («دکمه») هم پیدا
- * می‌شوند و باعث دسته‌بندی غلط می‌شوند. برای همین هر توکن ریسک‌دار با مرز
- * کلمه نوشته شده است. \b جاوااسکریپت روی حروف فارسی کار نمی‌کند.
- */
-const W = '(?:^| )';
-
-const HARD_DEPENDENCY: Record<LocationType, RegExp> = {
-  'شمال': new RegExp(W + 'مه(?= |$|‌)|مه‌گرفته|مه آلود|مه‌آلود|جنگل|سرخس|خزه|جاده جنگلی|تنه افتاده|آبشار|شالیزار|چمنزار جنگلی'),
-  'جنوب': /نخل|نخلستان|بادگیر|دیوار گلی|حصیر|بومی|لنج|اسکله/,
-  'ساحل': /دریا(?!چه)|موج‌|امواج|موج دریا|ساحل|لب آب|شن خیس|صخره|افق دریا|قایق|اسکله|جزرومد/,
-  'کویر': /کویر|بیابان|تپه شن|تپه‌های شن|رمل|ماسه|خط تپه|شن دست‌نخورده|کاروانسرا/,
-  'شهر': /نئون|گرافیتی|پیاده‌رو|پل عابر|خط عابر|ترافیک|کافه|ویترین|مترو|آسمان‌خراش/,
-  'باغ عمارت': /عمارت|ستون|طاق نصرت|قوس|درگاه|پله سنگی|نمای سنگ|پرده توری|لوستر|آینه‌کاری/,
+// Hard dependency keywords for scope derivation (regex patterns with word boundaries)
+const LOCATION_HARD_KEYWORDS: Record<string, RegExp> = {
+  'باغ و عمارت': /(?:^|\s)(باغ|عمارت|ویلا|حیاط)/i,
+  'شمال': /(?:^|\s)(شمال|گیلان|مازندران|درختان)/i,
+  'جنوب': /(?:^|\s)(جنوب|کرمان|فارس|خلیج)/i,
+  'کویر': /(?:^|\s)(کویر|ریگ|شن|بیابان|خاکی|سفید)/i,
+  'ساحل': /(?:^|\s)(ساحل|دریا|آب|موج|ماسه|خزر)/i,
+  'شهر': /(?:^|\s)(شهر|ساختمان|نئون|خیابان|پل|معماری)/i
 };
 
-/**
- * کلیدواژه‌های «نرم»: تمایل بصری می‌سازند اما ژست را قفل نمی‌کنند.
- * فقط برای مرتب‌سازی پیشنهادها داخل یک Context استفاده می‌شوند.
- */
-const SOFT_AFFINITY: Record<LocationType, RegExp> = {
-  'شمال': /سبز|برگ|درخت|رطوبت|باران|ابری|چتر|خزان/,
-  'جنوب': /سایه|پارچه سبک|زیورآلات|سنتی|محلی|گرمسیری/,
-  'ساحل': new RegExp('غروب|افق|پابرهنه|' + W + 'آب(?= |$|ی)|روی شن|بافت شن'),
-  'کویر': /آسمان|ستاره|بی‌کران|پارچه بلند|غبار|خشک/,
-  'شهر': /خیابان|ماشین|معماری|مدرن|چراغ|شهری/,
-  'باغ عمارت': new RegExp('باغ|تقارن|کلاسیک|' + W + 'پله|' + W + 'نما(?= |$|ی)'),
+// Soft dependency keywords (multiple matches = no auto-lock)
+const LOCATION_SOFT_KEYWORDS: Record<string, RegExp> = {
+  'باغ و عمارت': /(?:^|\s)(مدل|میز|صندلی|داخل|اتاق)/i,
+  'شمال': /(?:^|\s)(سبز|درخت|جنگل|تازه)/i,
+  'جنوب': /(?:^|\s)(آفتاب|گرم|روشن)/i,
+  'کویر': /(?:^|\s)(شن|ریگ|خاک|تنهایی)/i,
+  'ساحل': /(?:^|\s)(سبز|آب|تازه)/i,
+  'شهر': /(?:^|\s)(رنگین|روشن|شب)/i
 };
 
-/**
- * بازنویسی دستی. اگر موتور تشخیص یک ژست را اشتباه دسته‌بندی کرد، این‌جا
- * اصلاح می‌شود؛ کلید = عنوان ژست.
- *
- * نمونه‌های بریف محصول:
- *  • «قدم زدن روی پل چوبی» یک حرکت عمومی است → General.
- *  • ژستی که از مه و بافت جنگل استفاده می‌کند → North Special.
- */
-export const SCOPE_OVERRIDES: Record<string, { scope: PoseScope; lock?: LocationType; reason?: string }> = {
-  'قدم زدن روی پل چوبی': { scope: 'عمومی' },
-  'قدم زدن دست در دست': { scope: 'عمومی' },
-  'قدم زدن کنار ساحل': { scope: 'عمومی' },
-  'راه رفتن با هم': { scope: 'عمومی' },
-  'قدم زدن از پشت': { scope: 'عمومی' },
-  'سیلوئت غروب': { scope: 'عمومی' },
-  'تماشای ستاره‌ها': { scope: 'عمومی' },
-  'نشستن کنار آب': { scope: 'عمومی' },
+// Manual overrides for edge-case poses (pose title → location to lock to)
+const SCOPE_OVERRIDES: Record<string, string | null> = {
+  // Intentionally location-locked despite soft keywords
+  'پرتره زوج در بین درختان': 'شمال',
+  'قدم زدن کنار آب': 'ساحل',
+  'نشستن در موج': 'ساحل',
+  // Intentionally general despite partial hard matches
+  'جزئیات: دکمه عروس': null,  // "دکمه" triggers soft for many, but is genuinely general
 };
 
-function normalizeText(value: string): string {
-  return (value || '')
-    .replace(/[\u200c\u200e\u200f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/** همه متن قابل جستجوی یک ژست، برای تشخیص وابستگی محیطی */
-function poseText(p: Pose): string {
-  return normalizeText(
-    [
-      p.title,
-      (p.tags || []).join(' '),
-      (p.steps || []).join(' '),
-      (p.variations || []).join(' '),
-      p.bodyPosition || '',
-      p.cameraTips ? p.cameraTips.lightTip : '',
-    ].join(' ')
-  );
-}
-
-export interface ScopeResult {
-  scope: PoseScope;
-  lock?: LocationType;
-  reason?: string;
-}
-
-const LOCK_REASON: Record<LocationType, string> = {
-  'شمال': 'به مه، بافت جنگل و رطوبت شمال وابسته است؛ در محیط دیگری همان تصویر ساخته نمی‌شود.',
-  'جنوب': 'به نخلستان، بافت بومی و معماری گرمسیری جنوب وابسته است.',
-  'ساحل': 'به آب، موج و بافت شن ساحل وابسته است.',
-  'کویر': 'به خطوط تپه، بافت شن و بی‌کرانگی کویر وابسته است.',
-  'شهر': 'به عناصر شهری (خیابان، نئون، معماری معاصر) وابسته است.',
-  'باغ عمارت': 'به معماری، ستون، طاق و پله‌های عمارت وابسته است.',
-};
-
-/**
- * تصمیم می‌گیرد ژست «عمومی» است یا «اختصاصی لوکیشن».
- * قاعده: فقط وقتی قفل می‌شود که کلیدواژه سختِ یک محیط را داشته باشد. در بقیه
- * موارد ژست General است، حتی اگر عکس نمونه‌اش در یک لوکیشن خاص گرفته شده باشد.
- */
-export function deriveScope(p: Pose): ScopeResult {
-  const override = SCOPE_OVERRIDES[normalizeText(p.title)];
-  if (override) {
-    if (override.scope === 'اختصاصی لوکیشن') {
-      return {
-        scope: 'اختصاصی لوکیشن',
-        lock: override.lock,
-        reason: override.reason || (override.lock ? LOCK_REASON[override.lock] : undefined),
-      };
+export function deriveScope(title: string, description: string): typeof SCOPES[number] {
+  const combined = `${title} ${description}`;
+  
+  // Check manual overrides first
+  for (const [key, location] of Object.entries(SCOPE_OVERRIDES)) {
+    if (title.toLowerCase().includes(key.toLowerCase())) {
+      return location ? 'اختصاصی لوکیشن' : 'عمومی';
     }
-    return { scope: 'عمومی' };
   }
 
-  const text = poseText(p);
-  const hits = LOCATION_KEYS.filter((key) => HARD_DEPENDENCY[key].test(text));
+  let hardMatches = 0;
+  let softMatches = 0;
 
-  if (hits.length === 0) return { scope: 'عمومی' };
+  for (const location of LOCATIONS) {
+    const hardRegex = LOCATION_HARD_KEYWORDS[location];
+    const softRegex = LOCATION_SOFT_KEYWORDS[location];
 
-  // چند محیط هم‌زمان ادعا دارند → عنصر مشترک است، پس وابستگی واقعی نیست.
-  if (hits.length > 1) {
-    const authored = hits.filter((h) => (p.locations || []).indexOf(h) !== -1);
-    if (authored.length !== 1) return { scope: 'عمومی' };
-    return { scope: 'اختصاصی لوکیشن', lock: authored[0], reason: LOCK_REASON[authored[0]] };
+    if (hardRegex?.test(combined)) hardMatches++;
+    if (softRegex?.test(combined)) softMatches++;
   }
 
-  return { scope: 'اختصاصی لوکیشن', lock: hits[0], reason: LOCK_REASON[hits[0]] };
+  // If exactly 1 hard match and no conflicts: location-locked
+  if (hardMatches === 1) {
+    return 'اختصاصی لوکیشن';
+  }
+
+  // If multiple soft matches or no clear signal: general
+  return 'عمومی';
 }
 
-/* ---------------------- ۴. تشخیص سناریوی هر ژست ---------------------- */
+export function deriveScenario(title: string): typeof SCENARIOS[number] {
+  const lower = title.toLowerCase();
 
-const DETAIL_ARTS: ArtKey[] = ['ringFocus', 'handsDetail', 'bouquetLow', 'flatlay', 'dressHem', 'shoeDetail'];
-const MOVEMENT_ARTS: ArtKey[] = [
-  'walk', 'walkAway', 'walkSideBySide', 'runTogether', 'jump', 'splash', 'dance',
-  'spinTogether', 'dip', 'lift', 'carry', 'twirl', 'veilFly', 'dressFly',
-  'brideWalkAway', 'brideTwirl', 'groomWalk', 'fogWalk', 'confetti',
-];
-const WALK_ARTS: ArtKey[] = ['walk', 'walkAway', 'walkSideBySide', 'brideWalkAway', 'groomWalk', 'fogWalk', 'runTogether'];
-const FUN_ARTS: ArtKey[] = ['dance', 'spinTogether', 'dip', 'lift', 'carry', 'twirl', 'jump', 'splash', 'confetti', 'laugh', 'brideTwirl', 'veilFly', 'dressFly', 'kids'];
-const GROUP_ARTS: ArtKey[] = ['group', 'groupLine', 'groupCircle', 'groupToast', 'family'];
-const BRIDE_ARTS: ArtKey[] = ['soloBride', 'brideProfile', 'brideBouquet', 'veil', 'brideVeilOut', 'brideVeilIn', 'brideTrain', 'brideSit', 'brideLookUp'];
-const GROOM_ARTS: ArtKey[] = ['soloGroom', 'groomProfile', 'groomButton', 'groomTie', 'groomWatch', 'groomSit', 'groomLean'];
-const INTERACTION_ARTS: ArtKey[] = [
-  'backHug', 'backHugLookBack', 'frontHug', 'headOnChest', 'headOnShoulder',
-  'faceToFace', 'whisper', 'forehead', 'kiss', 'kissCheek', 'kissForehead',
-  'kissHand', 'kissShoulder', 'handInHand', 'backToBack',
-];
-const NIGHT_ARTS: ArtKey[] = ['starSky', 'nightLights', 'kissSilhouette'];
-
-const CEREMONY_RE = /ورود|عقد|سفره|مراسم|جشن|کیک|رد و بدل حلقه|خطبه|آیین/;
-const NIGHT_RE = /بدرقه|آسمان شب|ستاره|نئون|فشفشه|آتش‌بازی|نور مصنوعی/;
-const PREP_BRIDE_RE = /آماده شدن عروس|آرایش|لباس پوشیدن|تور بستن|شنیون|رژ لب/;
-const PREP_GROOM_RE = /آماده شدن داماد|کراوات|پاپیون|دکمه سرآستین|ساعت مچی|کت پوشیدن/;
-const FIRST_LOOK_RE = /نگاه اول|بهم رسیدن|به هم رسیدن|اولین دیدار|first look/i;
-
-function has(list: ArtKey[], art: ArtKey): boolean {
-  return list.indexOf(art) !== -1;
-}
-
-/** نگاشت زیردسته قدیمی باغ عمارت → سناریوی جدید (سازگاری با داده موجود) */
-const GSC_TO_SCENARIO: Record<string, ScenarioCategory> = {
-  'جزئیات و دکور': 'جزئیات و اکسسوری',
-  'آماده شدن عروس': 'آماده شدن عروس',
-  'آماده شدن داماد': 'آماده شدن داماد',
-  'بهم رسیدن زوج': 'نگاه اول و بهم رسیدن',
-  'پرتره زوج': 'پرتره زوج',
-  'خانواده و گروهی': 'خانواده و گروهی',
-  'رقص و شادی': 'شادی، احساس و رقص',
-  'شب و بدرقه': 'شب و بدرقه',
-};
-
-/**
- * سناریوی هر ژست، به ترتیب اعتبار سیگنال:
- *  ۱) مراحل زمان‌محور (آماده شدن / مراسم / شب) که از فرم بدن قابل حدس نیستند
- *  ۲) فرم صحنه (art) که دقیق‌ترین سیگنال ساختاری است
- *  ۳) زیردسته قدیمی باغ عمارت
- *  ۴) دسته‌بندی سوژه، به عنوان آخرین پناه
- */
-export function deriveScenario(p: Pose): ScenarioCategory {
-  const text = poseText(p);
-  const gsc = p.gardenSubCategory ? GSC_TO_SCENARIO[p.gardenSubCategory] : undefined;
-
-  // ۱) مراحل زمان‌محور
-  if (gsc === 'آماده شدن عروس' || PREP_BRIDE_RE.test(text)) return 'آماده شدن عروس';
-  if (gsc === 'آماده شدن داماد' || PREP_GROOM_RE.test(text)) return 'آماده شدن داماد';
-  if (CEREMONY_RE.test(text)) return 'مراسم و ورود';
-  if (gsc === 'نگاه اول و بهم رسیدن' || FIRST_LOOK_RE.test(text)) return 'نگاه اول و بهم رسیدن';
-  if (gsc === 'شب و بدرقه' || has(NIGHT_ARTS, p.art) || NIGHT_RE.test(text)) return 'شب و بدرقه';
-  if (gsc === 'جزئیات و اکسسوری' || has(DETAIL_ARTS, p.art)) return 'جزئیات و اکسسوری';
-
-  // ۲) فرم صحنه
-  if (has(GROUP_ARTS, p.art) || p.category === 'گروهی' || p.peopleCount > 2) return 'خانواده و گروهی';
-  if (has(WALK_ARTS, p.art) || p.poseType === 'راه رفتن') return 'قدم زدن و حرکت';
-  if (has(FUN_ARTS, p.art)) return 'شادی، احساس و رقص';
-  if (has(BRIDE_ARTS, p.art)) return 'پرتره عروس';
-  if (has(GROOM_ARTS, p.art)) return 'پرتره داماد';
-  if (has(INTERACTION_ARTS, p.art)) return 'تعامل زوج';
-
-  // ۳) زیردسته قدیمی
-  if (gsc) return gsc;
-
-  // ۴) دسته سوژه
-  if (p.category === 'عروس') return 'پرتره عروس';
-  if (p.category === 'داماد') return 'پرتره داماد';
-  return 'پرتره زوج';
-}
-
-/** زیرموضوع «جزئیات» — فقط وقتی سناریو جزئیات باشد */
-export function deriveDetailSubject(p: Pose): DetailSubject | undefined {
-  const text = poseText(p);
-  if (/حلقه/.test(text)) return 'حلقه';
-  if (/دسته‌گل|گل سینه/.test(text)) return 'دسته‌گل';
-  if (/کفش/.test(text)) return 'کفش';
-  if (/لباس|دنباله|تور|دامن/.test(text)) return 'لباس';
-  if (/دکور|شمع|کارت|سفره/.test(text)) return 'دکور';
-  if (/اکسسوری|ساعت|گوشوار|گردنبند|تاج|کراوات|پاپیون/.test(text)) return 'اکسسوری';
-  return undefined;
-}
-
-/* ------------------------- ۵. بقیه Attributes ------------------------- */
-
-const CLOSE_RE = /کلوز|نزدیک|دیتیل|جزئیات|ماکرو/;
-const WIDE_RE = /واید|باز|فول|تمام قد|وسعت|بی‌کران|محیطی/;
-
-export function deriveFraming(p: Pose): Framing {
-  if (has(DETAIL_ARTS, p.art)) return 'کلوز';
-  if (p.art === 'twoDots' || p.art === 'silhouette' || p.art === 'starSky') return 'واید';
-  const frame = normalizeText(p.cameraTips ? p.cameraTips.framing : '');
-  if (CLOSE_RE.test(frame)) return 'کلوز';
-  if (WIDE_RE.test(frame)) return 'واید';
-  return 'مدیوم';
-}
-
-export function deriveMovement(p: Pose): boolean {
-  return p.poseType === 'راه رفتن' || p.poseType === 'حرکتی' || has(MOVEMENT_ARTS, p.art);
-}
-
-export function deriveMood(p: Pose): Mood {
-  if (p.poseType === 'رسمی') return 'رسمی';
-  if (has(FUN_ARTS, p.art) || /خنده|شاد|بازیگوش|رقص|جشن/.test(poseText(p))) return 'شاد';
-  if (p.poseType === 'رمانتیک' || p.poseType === 'بغل کردن' || has(INTERACTION_ARTS, p.art)) return 'رمانتیک';
-  if (p.poseType === 'خلاقانه' || has(NIGHT_ARTS, p.art) || p.art === 'silhouette' || p.art === 'reflection') return 'دراماتیک';
-  return 'آرام';
-}
-
-const INDOOR_RE = /اتاق|آینه|پنجره|سالن|هتل|سوئیت|راهرو|لابی|داخل ساختمان/;
-const OUTDOOR_RE = new RegExp(
-  'جنگل|آسمان|باران|برف|نخل|تپه|غروب|خیابان|مزرعه|دریا|ساحل|کویر|طبیعت|' +
-    W + 'مه(?= |$|‌)|' + W + 'شن(?= |$|‌ها)|' + W + 'باد(?= |$|ی)'
-);
-
-export function deriveEnvironment(p: Pose): EnvironmentType {
-  const info = getScenario(p.scenario || deriveScenario(p));
-  const text = poseText(p);
-  if (OUTDOOR_RE.test(text)) return 'فضای باز';
-  if (info.indoorByDefault || INDOOR_RE.test(text)) return 'فضای بسته';
-  return 'هر دو';
-}
-
-/**
- * لوکیشن‌های قابل اجرا. قلبِ حل مشکل Duplicate: یک ژست عمومی به‌طور
- * محاسبه‌شده در همه محیط‌های سازگار دیده می‌شود، بدون اینکه رکوردش کپی شود.
- */
-export function deriveSuitableLocations(p: Pose, scope: ScopeResult): LocationType[] {
-  if (scope.scope === 'اختصاصی لوکیشن' && scope.lock) return [scope.lock];
-
-  const env = p.environment || deriveEnvironment(p);
-  const base: LocationType[] = env === 'فضای بسته' ? ['باغ عمارت', 'شهر'] : LOCATION_KEYS.slice();
-
-  // نیت نویسنده محتوا حفظ می‌شود: لوکیشن‌های دستی همیشه داخل لیست می‌مانند.
-  const merged = base.slice();
-  (p.locations || []).forEach((l) => {
-    if (merged.indexOf(l) === -1) merged.push(l);
-  });
-  return merged;
-}
-
-/** میزان تناسب بصری یک ژست عمومی با یک Context (برای مرتب‌سازی، نه فیلتر) */
-export function locationAffinity(p: Pose, loc: LocationType): number {
-  const text = poseText(p);
-  let score = 0;
-  if (HARD_DEPENDENCY[loc].test(text)) score += 3;
-  if (SOFT_AFFINITY[loc].test(text)) score += 1;
-  if ((p.locations || []).indexOf(loc) !== -1) score += 1;
-  return score;
-}
-
-/* --------------------------- ۶. غنی‌سازی ژست --------------------------- */
-
-/**
- * metadata جدید را روی ژست می‌نشاند. اگر مقداری از قبل دستی تعیین شده باشد
- * (مثلاً در ژست‌های خود کاربر) دست نمی‌خورد.
- */
-export function enrichPose(p: Pose): Pose {
-  const scope: ScopeResult = p.scope
-    ? { scope: p.scope, lock: p.locationLock, reason: p.locationReason }
-    : deriveScope(p);
-  const scenario = p.scenario || deriveScenario(p);
-
-  const enriched: Pose = {
-    ...p,
-    scenario,
-    scope: scope.scope,
-    locationLock: scope.scope === 'اختصاصی لوکیشن' ? scope.lock : undefined,
-    locationReason: scope.scope === 'اختصاصی لوکیشن' ? scope.reason : undefined,
-    framing: p.framing || deriveFraming(p),
-    mood: p.mood || deriveMood(p),
-    movement: typeof p.movement === 'boolean' ? p.movement : deriveMovement(p),
-    environment: p.environment || deriveEnvironment({ ...p, scenario }),
+  const scenarioKeywords: Record<typeof SCENARIOS[number], RegExp> = {
+    'جزئیات صحنه': /(?:^|\s)(جزئیات|صحنه|شال|دستمال|گل|زیورآلات|ساعت|کفش|آینه)/i,
+    'اکسسوری': /(?:^|\s)(اکسسوری|دسته|بوکه|گل|تاج|حلقه|گردن‌بند)/i,
+    'آماده شدن': /(?:^|\s)(آرایش|آماده|مو|میک‌آپ|آینه|صندلی|رختکن)/i,
+    'نگاه اول': /(?:^|\s)(نگاه اول|اول|بار اول|ملاقات|شوک|ابروبینی)/i,
+    'پرتره': /(?:^|\s)(پرتره|تک|تنهایی|چهره|صورت|سر)/i,
+    'تعامل زوج': /(?:^|\s)(زوج|دو نفر|دو تا|تعامل|بغل|دست|بوسه|آغوش)/i,
+    'حرکت و دویدن': /(?:^|\s)(دویدن|قدم|راه|حرکت|پریدن|دویدگی)/i,
+    'گروهی خانواده': /(?:^|\s)(خانواده|گروه|والدین|مادر|پدر|برادر|خواهر)/i,
+    'دوستان و شاهدین': /(?:^|\s)(دوست|شاهد|همراه|گروه|جمع)/i,
+    'مراسم و رسومات': /(?:^|\s)(مراسم|رسم|شالق|حنابندی|هنا|پیاده|کاروان)/i,
+    'شب و رقص': /(?:^|\s)(شب|رقص|رقصنده|رقصیدن|موسیقی|دی‌جی|میکروفن)/i,
+    'شام و مهمان‌ها': /(?:^|\s)(شام|مهمان|سفره|خوردن|نوشیدنی|شراب|کیک)/i,
+    'تفریحی و عفویی': /(?:^|\s)(عفویی|خنده|شاد|بازی|تفریح|خندہ|خیلی شاد)/i
   };
 
-  enriched.suitableLocations =
-    p.suitableLocations && p.suitableLocations.length
-      ? p.suitableLocations
-      : deriveSuitableLocations(enriched, scope);
+  for (const [scenario, regex] of Object.entries(scenarioKeywords)) {
+    if (regex.test(lower)) {
+      return scenario as typeof SCENARIOS[number];
+    }
+  }
 
-  if (scenario === 'جزئیات و اکسسوری') {
-    enriched.detailSubject = p.detailSubject || deriveDetailSubject(p);
+  return 'تفریحی و عفویی'; // default
+}
+
+export function deriveSuitableLocations(title: string, description: string): string[] {
+  const combined = `${title} ${description}`;
+  const suitable: string[] = [];
+
+  for (const location of LOCATIONS) {
+    const hardRegex = LOCATION_HARD_KEYWORDS[location];
+    const softRegex = LOCATION_SOFT_KEYWORDS[location];
+
+    const hardMatch = hardRegex?.test(combined) ?? false;
+    const softMatch = softRegex?.test(combined) ?? false;
+
+    // Include location if hard match or (soft match without conflicting hard match)
+    if (hardMatch || (softMatch && hardMatch === false)) {
+      suitable.push(location);
+    }
+  }
+
+  return suitable.length > 0 ? suitable : LOCATIONS as unknown as string[];
+}
+
+// Affinity scoring for location recommendation (0-1 range)
+export function scoreLocationAffinity(scenario: string, location: string): number {
+  const scenarioLocationAffinities: Record<string, Record<string, number>> = {
+    'جزئیات صحنه': { 'باغ و عمارت': 0.95, 'شمال': 0.7, 'جنوب': 0.6, 'کویر': 0.6, 'ساحل': 0.7, 'شهر': 0.65 },
+    'اکسسوری': { 'باغ و عمارت': 0.8, 'شمال': 0.7, 'جنوب': 0.7, 'کویر': 0.6, 'ساحل': 0.75, 'شهر': 0.65 },
+    'آماده شدن': { 'باغ و عمارت': 1.0, 'شمال': 0.65, 'جنوب': 0.65, 'کویر': 0.5, 'ساحل': 0.55, 'شهر': 0.75 },
+    'نگاه اول': { 'باغ و عمارت': 0.9, 'شمال': 0.8, 'جنوب': 0.75, 'کویر': 0.65, 'ساحل': 0.8, 'شهر': 0.7 },
+    'پرتره': { 'باغ و عمارت': 0.9, 'شمال': 0.85, 'جنوب': 0.85, 'کویر': 0.8, 'ساحل': 0.85, 'شهر': 0.75 },
+    'تعامل زوج': { 'باغ و عمارت': 0.95, 'شمال': 0.9, 'جنوب': 0.85, 'کویر': 0.75, 'ساحل': 0.9, 'شهر': 0.8 },
+    'حرکت و دویدن': { 'باغ و عمارت': 0.85, 'شمال': 0.9, 'جنوب': 0.8, 'کویر': 0.7, 'ساحل': 0.95, 'شهر': 0.65 },
+    'گروهی خانواده': { 'باغ و عمارت': 0.95, 'شمال': 0.85, 'جنوب': 0.75, 'کویر': 0.6, 'ساحل': 0.75, 'شهر': 0.7 },
+    'دوستان و شاهدین': { 'باغ و عمارت': 0.85, 'شمال': 0.75, 'جنوب': 0.7, 'کویر': 0.5, 'ساحل': 0.7, 'شهر': 0.8 },
+    'مراسم و رسومات': { 'باغ و عمارت': 0.9, 'شمال': 0.8, 'جنوب': 0.75, 'کویر': 0.5, 'ساحل': 0.65, 'شهر': 0.7 },
+    'شب و رقص': { 'باغ و عمارت': 0.8, 'شمال': 0.65, 'جنوب': 0.65, 'کویر': 0.4, 'ساحل': 0.65, 'شهر': 0.95 },
+    'شام و مهمان‌ها': { 'باغ و عمارت': 0.9, 'شمال': 0.7, 'جنوب': 0.65, 'کویر': 0.4, 'ساحل': 0.6, 'شهر': 0.85 },
+    'تفریحی و عفویی': { 'باغ و عمارت': 0.85, 'شمال': 0.8, 'جنوب': 0.75, 'کویر': 0.65, 'ساحل': 0.8, 'شهر': 0.75 }
+  };
+
+  return scenarioLocationAffinities[scenario]?.[location] ?? 0.5;
+}
+
+// Main enrichment function: call on every pose read to backfill legacy data
+export function enrichPose(pose: any) {
+  const enriched = { ...pose };
+
+  if (!enriched.scenario) {
+    enriched.scenario = deriveScenario(enriched.name || '');
+  }
+
+  if (!enriched.scope) {
+    enriched.scope = deriveScope(enriched.name || '', enriched.description || '');
+  }
+
+  if (!enriched.suitableLocations || enriched.suitableLocations.length === 0) {
+    enriched.suitableLocations = deriveSuitableLocations(enriched.name || '', enriched.description || '');
   }
 
   return enriched;
 }
 
-export function enrichPoses(list: Pose[]): Pose[] {
-  return list.map(enrichPose);
-}
+// Helper function: check if a pose "runs in" a location (compatibility, not ownership)
+export function runsIn(scope: typeof SCOPES[number], suitableLocations: string[], location: string): boolean {
+  if (scope === 'عمومی') {
+    return true; // General poses run everywhere
+  }
 
-/* -------------------------- ۷. کمک‌کننده‌های نمایش -------------------------- */
-
-export function scopeOf(p: Pose): PoseScope {
-  return p.scope || 'عمومی';
-}
-
-export function scenarioOf(p: Pose): ScenarioCategory {
-  return p.scenario || 'پرتره زوج';
-}
-
-export function suitableLocationsOf(p: Pose): LocationType[] {
-  if (p.suitableLocations && p.suitableLocations.length) return p.suitableLocations;
-  return p.locations || [];
-}
-
-/** آیا این ژست در این Context قابل اجراست؟ (پایه‌ی فیلتر لوکیشن جدید) */
-export function runsIn(p: Pose, loc: LocationType): boolean {
-  return suitableLocationsOf(p).indexOf(loc) !== -1;
-}
-
-/** برچسب کوتاه برای کارت ژست: «عمومی» یا «اختصاصی شمال» */
-export function scopeLabel(p: Pose): string {
-  if (scopeOf(p) === 'اختصاصی لوکیشن' && p.locationLock) return 'اختصاصی ' + p.locationLock;
-  return 'عمومی';
-}
-
-/** تفکیک ژست‌های یک Context به عمومی و اختصاصی، بدون هیچ Duplicate. */
-export function splitByScope(poses: Pose[], loc: LocationType): { general: Pose[]; special: Pose[] } {
-  const general: Pose[] = [];
-  const special: Pose[] = [];
-  poses.forEach((p) => {
-    if (!runsIn(p, loc)) return;
-    if (scopeOf(p) === 'اختصاصی لوکیشن') special.push(p);
-    else general.push(p);
-  });
-  general.sort((a, b) => locationAffinity(b, loc) - locationAffinity(a, loc) || a.ease - b.ease);
-  special.sort((a, b) => a.ease - b.ease);
-  return { general, special };
-}
-
-/** گروه‌بندی ژست‌ها بر اساس سناریو، به ترتیب روز تصویربرداری */
-export function groupByScenario(poses: Pose[]): { scenario: ScenarioInfo; poses: Pose[] }[] {
-  return SCENARIOS.map((scenario) => ({
-    scenario,
-    poses: poses.filter((p) => scenarioOf(p) === scenario.key).sort((a, b) => a.ease - b.ease),
-  })).filter((g) => g.poses.length > 0);
+  // Location-locked poses only run in their suitable locations
+  return suitableLocations.includes(location);
 }

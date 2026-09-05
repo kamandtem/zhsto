@@ -1,228 +1,229 @@
 import React, { useState } from 'react';
-import { Search, X, SlidersHorizontal, RotateCcw, Compass, MapPin } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import {
-  CategoryType,
-  DetailSubject,
-  DifficultyLevel,
-  EMPTY_FILTERS,
-  EnvironmentType,
-  FilterState,
-  Framing,
+  Scenario,
   LocationType,
   Mood,
-  MovementFilter,
-  Pose,
-  PoseScope,
+  Framing,
   PoseType,
+  DifficultyLevel,
+  Movement,
+  Environment,
+  CategoryType,
+  FilterState,
 } from '../types/pose';
-import { LOCATION_KEYS } from '../data/locations';
-import {
-  DETAIL_SUBJECTS,
-  ENVIRONMENTS,
-  FRAMINGS,
-  MOODS,
-  SCOPES,
-} from '../data/taxonomy';
-import { ScenarioRail } from './ScenarioRail';
+import { SCENARIOS, LOCATIONS, MOODS, FRAMINGS, MOVEMENTS, ENVIRONMENTS } from '../data/taxonomy';
 
-const CATEGORIES: (CategoryType | 'همه')[] = ['همه', 'عروس و داماد', 'عروس', 'داماد', 'زوج', 'گروهی'];
-const TYPES: (PoseType | 'همه')[] = [
-  'همه', 'ایستاده', 'نشسته', 'راه رفتن', 'بغل کردن', 'رمانتیک', 'رسمی', 'خلاقانه', 'حرکتی',
-];
-const DIFFS: (DifficultyLevel | 'همه')[] = ['همه', 'آسان', 'متوسط', 'حرفه‌ای'];
-const LOCS: (LocationType | 'همه')[] = ['همه', ...LOCATION_KEYS];
-const SCOPE_OPTS: (PoseScope | 'همه')[] = ['همه', ...SCOPES];
-const FRAMING_OPTS: (Framing | 'همه')[] = ['همه', ...FRAMINGS];
-const MOOD_OPTS: (Mood | 'همه')[] = ['همه', ...MOODS];
-const ENV_OPTS: (EnvironmentType | 'همه')[] = ['همه', ...ENVIRONMENTS];
-const MOVE_OPTS: MovementFilter[] = ['همه', 'دارد', 'ندارد'];
-const DETAIL_OPTS: (DetailSubject | 'همه')[] = ['همه', ...DETAIL_SUBJECTS];
-
-interface Props {
-  filters: FilterState;
+interface FiltersProps {
+  value: FilterState;
   onChange: (f: FilterState) => void;
-  total: number;
-  /** برای شمارش کنار چیپ‌های سناریو (کل کتابخانه، نه نتیجه فیلترشده) */
-  allPoses?: Pose[];
 }
 
-/**
- * فیلترها با ترتیب جدید مدل ذهنی:
- *   ۱) مرحله سناریو  ← محور اصلی
- *   ۲) عمومی / اختصاصی لوکیشن
- *   ۳) لوکیشن، فقط به معنای «قابل اجرا این‌جا»
- *   ۴) ویژگی‌ها: حال‌وهوا، کادر، حرکت، فضا
- * دسته سوژه و سختی به بخش پیشرفته منتقل شده‌اند.
- */
-export const Filters: React.FC<Props> = ({ filters, onChange, total, allPoses }) => {
-  const [expanded, setExpanded] = useState(false);
+const POSE_TYPES: PoseType[] = ['ایستاده', 'نشسته', 'راه رفتن', 'بغل کردن', 'رمانتیک', 'رسمی', 'خلاقانه', 'حرکتی'];
+const DIFFICULTIES: DifficultyLevel[] = ['آسان', 'متوسط', 'حرفه‌ای'];
+const CATEGORIES: CategoryType[] = ['عروس و داماد', 'عروس', 'داماد', 'زوج', 'گروهی'];
 
-  const dirty =
-    filters.search !== '' ||
-    filters.scenario !== 'همه' ||
-    filters.detailSubject !== 'همه' ||
-    filters.scope !== 'همه' ||
-    filters.location !== 'همه' ||
-    filters.framing !== 'همه' ||
-    filters.mood !== 'همه' ||
-    filters.movement !== 'همه' ||
-    filters.environment !== 'همه' ||
-    filters.category !== 'همه' ||
-    filters.poseType !== 'همه' ||
-    filters.difficulty !== 'همه' ||
-    filters.customOnly;
+export const Filters: React.FC<FiltersProps> = ({ value, onChange }) => {
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const Row = <T extends string>({
-    label,
-    hint,
-    options,
-    value,
-    onPick,
-  }: {
-    label: string;
-    hint?: string;
-    options: T[];
-    value: T;
-    onPick: (v: T) => void;
-  }) => (
-    <div>
-      <span className="label">{label}</span>
-      {hint && <p className="text-[10px] text-faint -mt-1 mb-1.5 leading-relaxed">{hint}</p>}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-        {options.map((o) => (
-          <button key={o} onClick={() => onPick(o)} className={`pill shrink-0 ${value === o ? 'pill-on' : ''}`}>
-            {o}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  const handleScenario = (scenario: Scenario | 'همه') => {
+    onChange({ ...value, scenario });
+  };
+
+  const handleLocation = (location: LocationType | 'همه') => {
+    onChange({ ...value, location });
+  };
+
+  const handleMood = (mood: Mood | 'همه') => {
+    onChange({ ...value, mood });
+  };
+
+  const handleFraming = (framing: Framing | 'همه') => {
+    onChange({ ...value, framing });
+  };
+
+  // Advanced filters
+  const handlePoseType = (poseType: PoseType | 'همه') => {
+    onChange({ ...value, poseType });
+  };
+
+  const handleDifficulty = (difficulty: DifficultyLevel | 'همه') => {
+    onChange({ ...value, difficulty });
+  };
+
+  const handleMovement = (movement: Movement | 'همه') => {
+    onChange({ ...value, movement });
+  };
+
+  const handleEnvironment = (environment: Environment | 'همه') => {
+    onChange({ ...value, environment });
+  };
+
+  const handleCategory = (category: CategoryType | 'همه') => {
+    onChange({ ...value, category });
+  };
 
   return (
-    <div className="card p-3.5 space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-faint" />
-          <input
-            value={filters.search}
-            onChange={(e) => onChange({ ...filters, search: e.target.value })}
-            placeholder="مثلاً: ژست رمانتیک دونفره، مناسب کویر، کادر واید..."
-            className="field !pr-9 !pl-9 !rounded-full"
-          />
-          {filters.search && (
-            <button
-              onClick={() => onChange({ ...filters, search: '' })}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-faint"
-              aria-label="پاک کردن جستجو"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="btn btn-ghost !px-3 !py-2.5 shrink-0"
-          style={{ borderColor: expanded || dirty ? 'var(--color-gold)' : 'var(--color-line)' }}
-          aria-label="فیلترها"
-        >
-          <SlidersHorizontal className="w-4 h-4 text-gold" />
-        </button>
-      </div>
-
-      {/* ۱) محور اصلی: مرحله سناریو */}
-      <div>
-        <span className="label">مرحله سناریو (محور اصلی)</span>
-        <ScenarioRail
-          poses={allPoses || []}
-          value={filters.scenario}
-          onPick={(v) =>
-            onChange({
-              ...filters,
-              scenario: v,
-              detailSubject: v === 'جزئیات و اکسسوری' ? filters.detailSubject : 'همه',
-            })
-          }
-        />
-      </div>
-
-      {filters.scenario === 'جزئیات و اکسسوری' && (
-        <Row label="موضوع جزئیات" options={DETAIL_OPTS} value={filters.detailSubject} onPick={(v) => onChange({ ...filters, detailSubject: v })} />
-      )}
-
-      {/* ۲) عمومی یا اختصاصی */}
-      <div>
-        <span className="label flex items-center gap-1.5">
-          <Compass className="w-3.5 h-3.5 text-gold" />
-          نوع ژست
-        </span>
-        <p className="text-[10px] text-faint -mt-1 mb-1.5 leading-relaxed">
-          «عمومی» یعنی مستقل از لوکیشن و قابل اجرا در اکثر محیط‌ها. «اختصاصی لوکیشن» فقط جایی معنا
-          دارد که ژست به ویژگی فیزیکی آن محیط وابسته است.
-        </p>
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-          {SCOPE_OPTS.map((o) => (
-            <button
-              key={o}
-              onClick={() => onChange({ ...filters, scope: o })}
-              className={`pill shrink-0 ${filters.scope === o ? 'pill-on' : ''}`}
-            >
-              {o}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ۳) لوکیشن = سازگاری، نه مالکیت */}
-      <div>
-        <span className="label flex items-center gap-1.5">
-          <MapPin className="w-3.5 h-3.5 text-gold" />
-          قابل اجرا در لوکیشن
-        </span>
-        <p className="text-[10px] text-faint -mt-1 mb-1.5 leading-relaxed">
-          لوکیشن یک Context است، نه دسته‌بندی. با انتخاب هر محیط، ژست‌های عمومی سازگار + ژست‌های
-          اختصاصی همان محیط را می‌بینی.
-        </p>
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-          {LOCS.map((o) => (
-            <button
-              key={o}
-              onClick={() => onChange({ ...filters, location: o })}
-              className={`pill shrink-0 ${filters.location === o ? 'pill-on' : ''}`}
-            >
-              {o}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ۴) ویژگی‌های اصلی */}
-      <Row label="حال‌وهوا" options={MOOD_OPTS} value={filters.mood} onPick={(v) => onChange({ ...filters, mood: v })} />
-      <Row label="کادر" options={FRAMING_OPTS} value={filters.framing} onPick={(v) => onChange({ ...filters, framing: v })} />
-
-      {expanded && (
-        <div className="space-y-3 a-fade">
-          <Row label="حرکت" options={MOVE_OPTS} value={filters.movement} onPick={(v) => onChange({ ...filters, movement: v })} />
-          <Row label="فضا" options={ENV_OPTS} value={filters.environment} onPick={(v) => onChange({ ...filters, environment: v })} />
-          <Row label="دسته‌بندی سوژه" options={CATEGORIES} value={filters.category} onPick={(v) => onChange({ ...filters, category: v })} />
-          <Row label="حالت بدن" options={TYPES} value={filters.poseType} onPick={(v) => onChange({ ...filters, poseType: v })} />
-          <Row label="سطح سختی" options={DIFFS} value={filters.difficulty} onPick={(v) => onChange({ ...filters, difficulty: v })} />
-          <button
-            onClick={() => onChange({ ...filters, customOnly: !filters.customOnly })}
-            className={`pill ${filters.customOnly ? 'pill-on' : ''}`}
+    <div className="space-y-3">
+      {/* PRIMARY FILTERS */}
+      <div className="space-y-2">
+        <div>
+          <label className="text-xs font-semibold text-gray-300">سناریو</label>
+          <select
+            value={value.scenario || 'همه'}
+            onChange={(e) => handleScenario(e.target.value as Scenario | 'همه')}
+            className="w-full mt-1 px-3 py-2 bg-gray-700 text-white text-sm rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
           >
-            فقط ژست‌های خودم
-          </button>
+            <option value="همه">همه سناریوها</option>
+            {SCENARIOS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
 
-      <div className="flex items-center justify-between pt-2 border-t border-line">
-        <span className="text-[11px] text-muted font-semibold">{total} ژست یافت شد</span>
-        {dirty && (
-          <button onClick={() => onChange({ ...EMPTY_FILTERS })} className="flex items-center gap-1 text-[11px] font-bold text-gold">
-            <RotateCcw className="w-3.5 h-3.5" />
-            پاک کردن فیلترها
-          </button>
+        <div>
+          <label className="text-xs font-semibold text-gray-300">لوکیشن</label>
+          <select
+            value={value.location || 'همه'}
+            onChange={(e) => handleLocation(e.target.value as LocationType | 'همه')}
+            className="w-full mt-1 px-3 py-2 bg-gray-700 text-white text-sm rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="همه">همه لوکیشن‌ها</option>
+            {LOCATIONS.map((loc) => (
+              <option key={loc} value={loc}>
+                {loc}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-gray-300">حال و هوا</label>
+          <select
+            value={value.mood || 'همه'}
+            onChange={(e) => handleMood(e.target.value as Mood | 'همه')}
+            className="w-full mt-1 px-3 py-2 bg-gray-700 text-white text-sm rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="همه">همه حال‌ها</option>
+            {MOODS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-gray-300">فریمینگ</label>
+          <select
+            value={value.framing || 'همه'}
+            onChange={(e) => handleFraming(e.target.value as Framing | 'همه')}
+            className="w-full mt-1 px-3 py-2 bg-gray-700 text-white text-sm rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="همه">همه فریمینگ‌ها</option>
+            {FRAMINGS.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* ADVANCED FILTERS */}
+      <div className="border-t border-gray-700 pt-3 mt-3">
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="flex items-center gap-2 text-xs font-semibold text-blue-400 hover:text-blue-300"
+        >
+          <ChevronDown size={14} className={`transition ${showAdvanced ? 'rotate-180' : ''}`} />
+          فیلترهای پیشرفته
+        </button>
+
+        {showAdvanced && (
+          <div className="space-y-2 mt-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-300">نوع ژست</label>
+              <select
+                value={value.poseType || 'همه'}
+                onChange={(e) => handlePoseType(e.target.value as PoseType | 'همه')}
+                className="w-full mt-1 px-3 py-2 bg-gray-700 text-white text-sm rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="همه">همه انواع</option>
+                {POSE_TYPES.map((pt) => (
+                  <option key={pt} value={pt}>
+                    {pt}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-300">سختی</label>
+              <select
+                value={value.difficulty || 'همه'}
+                onChange={(e) => handleDifficulty(e.target.value as DifficultyLevel | 'همه')}
+                className="w-full mt-1 px-3 py-2 bg-gray-700 text-white text-sm rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="همه">همه سطح‌ها</option>
+                {DIFFICULTIES.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-300">حرکت</label>
+              <select
+                value={value.movement || 'همه'}
+                onChange={(e) => handleMovement(e.target.value as Movement | 'همه')}
+                className="w-full mt-1 px-3 py-2 bg-gray-700 text-white text-sm rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="همه">همه حرکات</option>
+                {MOVEMENTS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-300">محیط</label>
+              <select
+                value={value.environment || 'همه'}
+                onChange={(e) => handleEnvironment(e.target.value as Environment | 'همه')}
+                className="w-full mt-1 px-3 py-2 bg-gray-700 text-white text-sm rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="همه">همه محیط‌ها</option>
+                {ENVIRONMENTS.map((e) => (
+                  <option key={e} value={e}>
+                    {e}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-300">دسته</label>
+              <select
+                value={value.category || 'همه'}
+                onChange={(e) => handleCategory(e.target.value as CategoryType | 'همه')}
+                className="w-full mt-1 px-3 py-2 bg-gray-700 text-white text-sm rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="همه">همه دسته‌ها</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         )}
       </div>
     </div>
